@@ -3,9 +3,9 @@ import pygame, sys
 from player import Player
 
 pygame.init()
-SCREEN_WIDTH = 1920
-SCREEN_HEIGHT = 1080
-player = Player((SCREEN_WIDTH / 2 - 32, SCREEN_HEIGHT / 2 - 32))
+SCREEN_WIDTH = 960
+SCREEN_HEIGHT = 540
+player = Player((SCREEN_WIDTH / 2 - 32, SCREEN_HEIGHT / 2 - 32), 2)
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Realm Below")

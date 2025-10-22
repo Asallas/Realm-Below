@@ -1,9 +1,9 @@
 import pygame
 from math import sqrt
 class Player(pygame.sprite.Sprite):
-    def __init__(self, position, scale=3):
+    def __init__(self, position, scale=2):
         # Load the image file sprite sheet
-        self.sheet = pygame.image.load('Soldier-Blue.png')
+        self.sheet = pygame.image.load('Spritesheets/Soldier-Blue.png')
         
         # Define the area of a single sprite
         self.sheet.set_clip(pygame.Rect(0,0,32,32))
@@ -43,11 +43,13 @@ class Player(pygame.sprite.Sprite):
             "southwest": 224
         }
         self.states = {name: {} for name in directions}
+        self.attack_states = {name: {} for name in directions}
 
         # Add different states from spritesheet below
         for i in range(4):
             for name,y in directions.items():
                 self.states[name][i] = (32*i, y, 32,32)
+                self.attack_states[name][i] = (128 + (32*i), y, 32, 32)
 
     def get_frame(self, frame_set):
         self.animation_timer += 1
