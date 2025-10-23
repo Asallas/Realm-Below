@@ -7,7 +7,13 @@ class Player(pygame.sprite.Sprite):
         self.sheets = {
             "walk" : self.load_sheet("Spritesheets/PlayerAnimations/Walk.png"),
             "run" : self.load_sheet("Spritesheets/PlayerAnimations/Run.png"),
-            "idle": self.load_sheet("Spritesheets/PlayerAnimations/Idle.png")
+            "idle": self.load_sheet("Spritesheets/PlayerAnimations/Idle.png"),
+            "roll" : self.load_sheet("Spritesheets/PlayerAnimations/Rolling.png"),
+            "attack1": self.load_sheet("Spritesheets/PlayerAnimations/Melee.png"),
+            "attack2": self.load_sheet("Spritesheets/PlayerAnimations/MeleeRun.png"),
+            "counter": self.load_sheet("Spritesheets/PlayerAnimations/Counter.png"),
+            "block_start": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockStart.png"),
+            "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png")
         }
         
         # Scaling factor for sprites
@@ -17,14 +23,33 @@ class Player(pygame.sprite.Sprite):
         self.frame_index = 0
 
         # Set walking distance  (Current default will be around 7)
-        self.distance = 7
+        self.distance = 15
         
         # Set initial standing position
         self.facing = 'south'
+        self.prev_facing = None # Save previous facing for restoration during rolling
         
         # Animation timing delay
         self.animation_timer = 0
-        self.animation_delay = 0
+        self.animation_delay = 5
+
+        # Locking flag for non-interruptible animations
+        self.locked = False 
+
+        # Blocking flags
+        self.blocking = False
+        self.block_holding = False
+
+
+
+        # Rolling state variables
+        self.rolling = False
+        self.roll_distance = 300
+        self.roll_speed = 12
+        self.roll_direction = None
+        self.roll_target_pos = None
+        self.roll_cooldown = 0
+        self.roll_cooldown_max = 60
         
         self.animations = {}
         # Define directions for animations
@@ -38,8 +63,11 @@ class Player(pygame.sprite.Sprite):
             "west": 512,
             "southwest": 384
         }
+        self.non_interruptible = {"attack1", "attack2", "roll", "counter", "block_start"}
+        self.looping = {'walk', 'run', 'idle', 'block_hold'}
+
         for anim_name, sheet in self.sheets.items():
-            self.animations[anim_name] = {direc for direc in directions}
+            self.animations[anim_name] = {d: {} for d in directions}
             for i in range(15):
                 for direct, y in directions.items():
                     self.animations[anim_name][direct][i] = (128 * i, y, 128, 128)
@@ -48,7 +76,10 @@ class Player(pygame.sprite.Sprite):
         # Set default animation
         self.current_animation = "idle"
         self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
-    
+        self.rect = self.image.get_rect(topleft = position)
+
+# --------------- Loading / Frame Handling ---------------------
+
     def load_sheet(self, path):
         if not os.path.exists(path):
             raise FileNotFoundError(f"Spritesheet not found {path}")
@@ -63,95 +94,181 @@ class Player(pygame.sprite.Sprite):
             frame = pygame.transform.scale(frame, (int(w // self.scale), int(h // self.scale)))
         return frame
     
+    def set_animation(self, animation_name):
+        if animation_name != self.current_animation:
+            self.current_animation = animation_name
+            self.frame_index = 0
+            self.animation_delay = 5
+        if animation_name in self.non_interruptible:
+            self.animation_delay = 2
+        
+# ------------------ Update & Animation --------------------------
+    def update(self):
+        if self.roll_cooldown > 0:
+            self.roll_cooldown -= 1
+
+        if self.rolling:
+            self._update_roll()
+        
+        self.update_animations()
+
+    
     def update_animations(self):
-        
-        pass
+        self.animation_timer += 1
+        if self.animation_timer >= self.animation_delay:
+            self.frame_index += 1
+            self.animation_timer = 0
+
+            frames = len(self.animations[self.current_animation][self.facing])
+            if self.frame_index >= frames:
+                if self.current_animation in self.looping:
+                    self.frame_index = 0
+                else:
+                    if self.current_animation == "block_start":
+                        self.set_animation("block_holding")
+                        self.block_holding = True
+                        self.frame_index = 0
+                        self.locked = True
+                    elif self.current_animation in {"attack1", "attack2", "roll", "counter"}:
+                        self.frame_index = frames - 1
+                        if self.current_animation == "roll":
+                            self._end_roll()
+                        elif self.current_animation in self.non_interruptible:
+                            self.locked = False
+                            self.set_animation("idle")
+                    else: # default
+                        self.frame_index = 0
     
-    def clip(self, clipped_rect):
-        if type(clipped_rect) is dict:
-            self.sheet.set_clip(pygame.Rect(self.get_frame(clipped_rect)))
+        self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
+        
+# ------------------------------ Movement -------------------------
+    def move(self, direction):
+        if self.locked or self.rolling:
+            return
+        if self.blocking or self.block_holding:
+            return
+
+        self.set_animation('run')
+        self.facing = direction
+        delta = 0
+        if direction in ('northeast', 'northwest', 'southeast', 'southwest'):
+            delta = self.distance / sqrt(2)
         else:
-            self.sheet.set_clip(pygame.Rect(clipped_rect))
-        return clipped_rect
+            delta = self.distance
+        
+        if 'north' in direction:
+            self.rect.y -= delta
+        if 'south' in direction:
+            self.rect.y += delta
+        if 'east' in direction:
+            self.rect.x += delta
+        if 'west' in direction:
+            self.rect.x -= delta
+        
+
+    def stand(self):
+        if self.locked or self.rolling:
+            return
+        if self.blocking or self.block_holding:
+            return
+        self.set_animation("idle")
+
+# ---------------------- Combat -----------------------------    
+    def attack(self):
+        if not self.locked and not self.rolling:
+            self.set_animation("attack1")
+            self.frame_index = 0
+            self.locked = True
+            
+    def attack2(self):
+        if not self.locked and not self.rolling:
+            self.set_animation("attack2")
+            self.frame_index = 0
+            self.locked = True
+
+    def counter(self):
+        if not self.locked and not self.rolling:
+            self.set_animation("counter")
+            self.frame_index = 0
+            self.locked = True
+
+# ---------------------- Block Logic -------------------
+    def block(self):
+        if self.locked or self.rolling or self.blocking:
+            return
+        
+        self.blocking = True
+        self.locked = True
+        self.set_animation("block_start")
+        self.frame_index = 0
     
-    def update(self, direction):
-
-        diagonal = self.distance / sqrt(2)
-
-        if direction == 'N':
-            self.facing = 'north'
-            self.clip(self.states["north"])
-            self.rect.y -= self.distance
-
-        if direction == 'E':
-            self.facing = 'east'
-            self.clip(self.states["east"])
-            self.rect.x += self.distance
-            
-        if direction == 'S':
-            self.facing = 'south'
-            self.clip(self.states["south"])
-            self.rect.y += self.distance
-
-        if direction == 'W':
-            self.facing = 'west'
-            self.clip(self.states["west"])
-            self.rect.x -= self.distance
-
-        if direction == 'NE':
-            self.facing = 'northeast'
-            self.clip(self.states["northeast"])
-            self.rect.x += diagonal
-            self.rect.y -= diagonal
-
-        if direction == 'NW':
-            self.facing = 'northwest'
-            self.clip(self.states["northwest"])
-            self.rect.x -= diagonal
-            self.rect.y -= diagonal
-
-        if direction == 'SE':
-            self.facing = 'southeast'
-            self.clip(self.states["southeast"])
-            self.rect.x += diagonal
-            self.rect.y += diagonal
-            
-        if direction == 'SW':
-            self.facing = 'southwest'
-            self.clip(self.states["southwest"])
-            self.rect.x -= diagonal
-            self.rect.y += diagonal
+    def release_block(self):
+        if not self.blocking:
+            return
         
-        if direction == 'stand':
-            self.clip(self.states[self.facing][0])
+        self.blocking = False
+        self.locked = False
+        self.block_holding = False
+        self.set_animation("idle")
+
+# --------------------- Roll Logic ----------------------
+    def roll(self):
+        if self.locked or self.rolling or self.roll_cooldown > 0:
+            return
         
-        self.image = self.sheet.subsurface(self.sheet.get_clip())
-        original_size = self.image.get_size()
-        scaled_size = (int(original_size[0] // self.scale), int(original_size[1] // self.scale))
-        self.image = pygame.transform.scale(self.image, scaled_size)
-            
+        self.rolling = True
+        self.locked = True
+
+        self.roll_direction = self._get_opposite_direction(self.facing)
+
+        self.prev_facing = self.facing
+        self.facing = self.roll_direction
+
+        self.set_animation("roll")
+        start_pos = pygame.Vector2(self.rect.center)
+        direction_vector = self._get_direction_vector(self.roll_direction)
+        self.roll_target_pos = start_pos + direction_vector * self.roll_distance
+
+    def _update_roll(self):
+        if not self.rolling:
+            return
         
-    def handle_event(self, event):
-        if event.type == pygame.KEYUP: 
-            self.update('stand')
-        if event.type in (pygame.KEYDOWN,pygame.KEYUP):
-            keys = pygame.key.get_pressed()
-            direction = 'stand'
-            if keys[pygame.K_UP] and keys[pygame.K_RIGHT]:
-                direction = 'NE'
-            elif keys[pygame.K_UP] and keys[pygame.K_LEFT]:
-                direction = 'NW'
-            elif keys[pygame.K_DOWN] and keys[pygame.K_RIGHT]:
-                direction = 'SE'
-            elif keys[pygame.K_DOWN] and keys[pygame.K_LEFT]:
-                direction = 'SW'
-            elif keys[pygame.K_UP]:
-                direction = 'N'
-            elif keys[pygame.K_DOWN]:
-                direction = 'S'
-            elif keys[pygame.K_RIGHT]:
-                direction = 'E'
-            elif keys[pygame.K_LEFT]:
-                direction = 'W'
-            
-            self.update(direction)
+        direction_vector = self._get_direction_vector(self.roll_direction)
+        move_step = direction_vector * self.roll_speed
+        self.rect.center += move_step
+
+        current_pos = pygame.Vector2(self.rect.center)
+        distance_remaining = current_pos.distance_to(self.roll_target_pos)
+        if distance_remaining <= self.roll_speed:
+            self._end_roll()
+
+    def _end_roll(self):
+        self.rolling = False
+        self.locked = False
+        self.roll_cooldown = self.roll_cooldown_max
+        self.facing = self.prev_facing
+        self.set_animation('idle')
+        
+
+    # ---------------- Direction Helpers -------------------
+    def _get_direction_vector(self, direction):
+        mapping = {
+            'north': pygame.Vector2(0, -1),
+            'south': pygame.Vector2(0, 1),
+            'east': pygame.Vector2(1, 0),
+            'west': pygame.Vector2(-1, 0),
+            'northeast': pygame.Vector2(1, -1).normalize(),
+            'northwest': pygame.Vector2(-1, -1).normalize(),
+            'southeast': pygame.Vector2(1, 1).normalize(),
+            'southwest': pygame.Vector2(-1, 1).normalize()
+        }
+        return mapping.get(direction, pygame.Vector2(0,0))
+    
+    def _get_opposite_direction(self, direction):
+        opposites = {
+            'north' : 'south', 'south' : 'north',
+            'east' : 'west', 'west' : 'east',
+            'northeast' : 'southwest', 'southwest' : 'northeast',
+            'northwest' : 'southeast', 'southeast' : 'northwest'
+        }
+        return opposites.get(direction, 'south')
