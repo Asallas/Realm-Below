@@ -16,41 +16,61 @@ class Player(pygame.sprite.Sprite):
             "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png")
         }
         
-        # Scaling factor for sprites
-        self.scale = scale
         
-        # Initialize a frame counter
-        self.frame_index = 0
-
-        # Set walking distance  (Current default will be around 7)
-        self.distance = 15
-        
-        # Set initial standing position
-        self.facing = 'south'
+        self.scale = scale # Scaling factor for sprites
+        self.frame_index = 0 # Initialize a frame counter
+        self.distance = 15 # Set walking distance
+        self.facing = 'south'# Set initial standing position
         self.prev_facing = None # Save previous facing for restoration during rolling
         
         # Animation timing delay
         self.animation_timer = 0
         self.animation_delay = 5
 
-        # Locking flag for non-interruptible animations
+        # State flags
         self.locked = False 
-
-        # Blocking flags
         self.blocking = False
         self.block_holding = False
-
-
-
-        # Rolling state variables
         self.rolling = False
+
+        # Rolling data
         self.roll_distance = 300
         self.roll_speed = 12
         self.roll_direction = None
         self.roll_target_pos = None
         self.roll_cooldown = 0
         self.roll_cooldown_max = 60
-        
+
+        # --------------------- Hitboxes ------------------
+        self.scale_base = .5 # Scale at which the original hitbox values were set
+        self.scale_ratio = self.scale_base / self.scale
+        # (width, height, x offset, y offset)
+        self.hitbox_data = {
+            "north": (58 * self.scale_ratio, 119 * self.scale_ratio, 105 * self.scale_ratio, 77 * self.scale_ratio),
+            "south": (53 * self.scale_ratio, 107 * self.scale_ratio, 94 * self.scale_ratio, 92 * self.scale_ratio),
+            "east" : (79 * self.scale_ratio, 95 * self.scale_ratio, 90 * self.scale_ratio, 95 * self.scale_ratio),
+            "west" : (73 * self.scale_ratio, 103 * self.scale_ratio, 86 * self.scale_ratio, 87 * self.scale_ratio),
+            "northeast" : (52 * self.scale_ratio, 105 * self.scale_ratio, 114 * self.scale_ratio, 88 * self.scale_ratio),
+            "northwest" : (75 * self.scale_ratio, 100 * self.scale_ratio, 85 * self.scale_ratio, 85 * self.scale_ratio),
+            "southeast" : (75 * self.scale_ratio, 90 * self.scale_ratio, 90 * self.scale_ratio, 100 * self.scale_ratio),
+            "southwest" : (62 * self.scale_ratio, 100 * self.scale_ratio, 88 * self.scale_ratio, 95 * self.scale_ratio)
+        }
+
+        w,h,ox,oy = self.hitbox_data[self.facing]
+
+        self.rect = pygame.Rect(*position, 128,128)
+        self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
+        # Attack polygon points
+        self.attack_hitbox_points = [
+            (0,0), # Center
+            (50,-30), # Forward upper point
+            (50,30) # forward lower point
+        ]
+        self.attack_hitbox = None
+        self.attack_active = False
+        self.attack_timer = 0
+
+        # Animations
         self.animations = {}
         # Define directions for animations
         directions = {
@@ -85,7 +105,6 @@ class Player(pygame.sprite.Sprite):
             raise FileNotFoundError(f"Spritesheet not found {path}")
         return pygame.image.load(path).convert_alpha()
             
-
     def get_frame(self, animation_name, direction, frame_set):
         rect = self.animations[animation_name][direction][frame_set]
         frame = self.sheets[animation_name].subsurface(rect)
@@ -111,6 +130,13 @@ class Player(pygame.sprite.Sprite):
             self._update_roll()
         
         self.update_animations()
+        self._update_hitboxes()
+
+        if self.attack_active:
+            self.attack_timer -= 1
+            if self.attack_timer <= 0:
+                self.attack_active = False
+                self.attack_hitbox = None
 
     
     def update_animations(self):
@@ -179,18 +205,39 @@ class Player(pygame.sprite.Sprite):
             self.set_animation("attack1")
             self.frame_index = 0
             self.locked = True
+            self._activate_attack_hitbox(15)
             
     def attack2(self):
         if not self.locked and not self.rolling:
             self.set_animation("attack2")
             self.frame_index = 0
             self.locked = True
+            self._activate_attack_hitbox(15)
 
     def counter(self):
         if not self.locked and not self.rolling:
             self.set_animation("counter")
             self.frame_index = 0
             self.locked = True
+            self._activate_attack_hitbox(12)
+
+    def _activate_attack_hitbox(self,duration):
+        self.attack_active = True
+        self.attack_timer = duration
+        
+        facing_mod = {
+            "north" : (0,-1), "south" : (0,1), "east" : (1,0), "west": (-1,0),
+            "northeast" : (0.7, -0.7), "northwest" : (-0.7, -0.7),
+            "southeast" : (0.7, 0.7), "southwest" : (-0.7, 0.7)
+        }
+        fx, fy = facing_mod[self.facing]
+        cx, cy = self.rect.center
+
+        self.attack_hitbox = [
+            (cx + px * fx, cy + py * fy)
+            for px,py in self.attack_hitbox_points
+        ]
+
 
 # ---------------------- Block Logic -------------------
     def block(self):
@@ -229,6 +276,9 @@ class Player(pygame.sprite.Sprite):
         direction_vector = self._get_direction_vector(self.roll_direction)
         self.roll_target_pos = start_pos + direction_vector * self.roll_distance
 
+        self.hitbox = None
+        self.attack_hitbox = None
+
     def _update_roll(self):
         if not self.rolling:
             return
@@ -248,9 +298,32 @@ class Player(pygame.sprite.Sprite):
         self.roll_cooldown = self.roll_cooldown_max
         self.facing = self.prev_facing
         self.set_animation('idle')
+        self._reset_hitbox()
         
 
-    # ---------------- Direction Helpers -------------------
+    # ---------------- Helper Functions -------------------
+    def _update_hitboxes(self):
+        if self.hitbox:
+            w,h,ox,oy = self.hitbox_data[self.facing]
+            self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
+        if self.attack_hitbox and self.attack_active:
+            cx,cy = self.rect.center
+            facing_mod = {
+                "north" : (0,-1), "south" : (0,1), 'east' : (1,0), 'west': (-1,0),
+                "northeast" : (0.7, -0.7), "northwest" : (-0.7, -0.7),
+                "southeast" : (0.7, 0.7), "southwest" : (-0.7, 0.7)
+            }
+            fx, fy = facing_mod[self.facing]
+            self.attack_hitbox = [
+                (cx + px * fx, cy + py * fy)
+                for px,py in self.attack_hitbox_points
+            ]
+            
+        
+    def _reset_hitbox(self):
+        w,h,ox,oy = self.hitbox_data[self.facing]
+        self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
+
     def _get_direction_vector(self, direction):
         mapping = {
             'north': pygame.Vector2(0, -1),
@@ -272,3 +345,10 @@ class Player(pygame.sprite.Sprite):
             'northwest' : 'southeast', 'southeast' : 'northwest'
         }
         return opposites.get(direction, 'south')
+    
+    # -------------- Debug draw ------------------------
+    def draw(self, screen):
+        if self.hitbox:
+            pygame.draw.rect(screen, pygame.Color("yellow"), self.hitbox, 2)
+        if self.attack_hitbox:
+            pygame.draw.polygon(screen, pygame.Color("blue"), self.attack_hitbox, 2)

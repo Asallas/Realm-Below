@@ -10,16 +10,14 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Realm Below")
 clock = pygame.time.Clock()
 
-player = Player((0,0), .5)
+player = Player((0,0), 1)
 
-target_size = (100,100)
+target_size = (500,500)
 target_rect = pygame.Rect(
-    (SCREEN_WIDTH // 2 - target_size[0] //2,
+    (SCREEN_WIDTH // 2 - target_size[0] // 2,
      SCREEN_HEIGHT //2 - target_size[1] // 2),
      target_size
 )
-
-
 
 running = True
 while running:
@@ -62,7 +60,7 @@ while running:
     
     player.update()
 
-    if player.rect.colliderect(target_rect):
+    if player.hitbox and player.hitbox.colliderect(target_rect):
         target_color = pygame.Color("red")
     else:
         target_color = pygame.Color("green")
@@ -73,6 +71,8 @@ while running:
     pygame.draw.rect(screen, target_color, target_rect)
 
     screen.blit(player.image, player.rect)
+
+    player.draw(screen)
 
     pygame.draw.rect(screen, pygame.Color("blue"), player.rect,2)
     pygame.display.flip()
