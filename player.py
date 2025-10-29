@@ -13,9 +13,11 @@ class Player(pygame.sprite.Sprite):
             "attack2": self.load_sheet("Spritesheets/PlayerAnimations/MeleeRun.png"),
             "counter": self.load_sheet("Spritesheets/PlayerAnimations/Counter.png"),
             "block_start": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockStart.png"),
-            "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png")
+            "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png"),
+            "damaged": self.load_sheet("Spritesheets/PlayerAnimations/Take/Damage.png"),
+            "dead" : self.load_sheet("Spritesheets/PlayerAnimations/Die.png")
         }
-        
+        self.health = 10
         
         self.scale = scale # Scaling factor for sprites
         self.frame_index = 0 # Initialize a frame counter
@@ -83,7 +85,7 @@ class Player(pygame.sprite.Sprite):
             "west": 512,
             "southwest": 384
         }
-        self.non_interruptible = {"attack1", "attack2", "roll", "counter", "block_start"}
+        self.non_interruptible = {"attack1", "attack2", "roll", "counter", "block_start", "damaged", "dead"}
         self.looping = {'walk', 'run', 'idle', 'block_hold'}
 
         for anim_name, sheet in self.sheets.items():
@@ -237,7 +239,26 @@ class Player(pygame.sprite.Sprite):
             (cx + px * fx, cy + py * fy)
             for px,py in self.attack_hitbox_points
         ]
+# ---------------------- Damage ---------------------
 
+    def _take_damage(self):
+        self.set_animation("damaged")
+        self.frame_index = 0
+        self.locked = True
+        self.hitbox = None
+        self.health -= 1
+        # Player gets moved back a set number of tiles
+        
+        
+    def knockback(self):
+        pass
+    
+    def _player_death(self):
+        self.set_animation("dead")
+        self.frame_index = 0
+        self.locked  = True
+        # Only thing that should happen since killing sprite is in main game loop
+        
 
 # ---------------------- Block Logic -------------------
     def block(self):
