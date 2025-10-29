@@ -1,8 +1,9 @@
-import pygame, os
-from math import sqrt
-
-class Player(pygame.sprite.Sprite):
+import pygame
+from character import Character
+class Player(Character):
     def __init__(self, position, scale=2):
+        super().__init__(self, position, scale)
+
         # Load the image file sprite sheet
         self.sheets = {
             "walk" : self.load_sheet("Spritesheets/PlayerAnimations/Walk.png"),
@@ -17,12 +18,10 @@ class Player(pygame.sprite.Sprite):
             "damaged": self.load_sheet("Spritesheets/PlayerAnimations/Take/Damage.png"),
             "dead" : self.load_sheet("Spritesheets/PlayerAnimations/Die.png")
         }
-        self.health = 10
-        
+        self.health = 10    
         self.scale = scale # Scaling factor for sprites
         self.frame_index = 0 # Initialize a frame counter
-        self.distance = 15 # Set walking distance
-        self.facing = 'south'# Set initial standing position
+        super().distance = 15 # Set walking distance
         self.prev_facing = None # Save previous facing for restoration during rolling
         
         # Animation timing delay
@@ -30,7 +29,6 @@ class Player(pygame.sprite.Sprite):
         self.animation_delay = 5
 
         # State flags
-        self.locked = False 
         self.blocking = False
         self.block_holding = False
         self.rolling = False
@@ -72,7 +70,7 @@ class Player(pygame.sprite.Sprite):
         self.attack_active = False
         self.attack_timer = 0
 
-        # Animations
+      # Animations
         self.animations = {}
         # Define directions for animations
         directions = {
@@ -99,29 +97,6 @@ class Player(pygame.sprite.Sprite):
         self.current_animation = "idle"
         self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
         self.rect = self.image.get_rect(topleft = position)
-
-# --------------- Loading / Frame Handling ---------------------
-
-    def load_sheet(self, path):
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Spritesheet not found {path}")
-        return pygame.image.load(path).convert_alpha()
-            
-    def get_frame(self, animation_name, direction, frame_set):
-        rect = self.animations[animation_name][direction][frame_set]
-        frame = self.sheets[animation_name].subsurface(rect)
-        if self.scale != 1:
-            w,h = frame.get_size()
-            frame = pygame.transform.scale(frame, (int(w // self.scale), int(h // self.scale)))
-        return frame
-    
-    def set_animation(self, animation_name):
-        if animation_name != self.current_animation:
-            self.current_animation = animation_name
-            self.frame_index = 0
-            self.animation_delay = 5
-        if animation_name in self.non_interruptible:
-            self.animation_delay = 2
         
 # ------------------ Update & Animation --------------------------
     def update(self):

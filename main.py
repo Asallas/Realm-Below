@@ -15,9 +15,10 @@ player = Player((0,0), 1)
 target_size = (500,500)
 target_rect = pygame.Rect(
     (SCREEN_WIDTH // 2 - target_size[0] // 2,
-     SCREEN_HEIGHT //2 - target_size[1] // 2),
+     SCREEN_HEIGHT // 2 - target_size[1] // 2),
      target_size
 )
+TEMP_COLOR = (48,69,41)
 
 running = True
 while running:
@@ -66,7 +67,7 @@ while running:
         target_color = pygame.Color("green")
     
 
-    screen.fill(pygame.Color('black'))
+    screen.fill(TEMP_COLOR)
     
     pygame.draw.rect(screen, target_color, target_rect)
 
