@@ -18,11 +18,30 @@ class Character(pygame.sprite.Sprite):
 
         self.hitbox = None
         self.attack_hitbox = None
+        
+        self.non_interruptible = {}
+        self.looping = {}
+        
 
     # -------------- Sprite & Animation -----------------
-    def load_sheets(self, path):
+    def load_sheet(self, path, name):
+        directions = {
+            "south":256,
+            "southeast": 128,
+            "east": 0,
+            "northeast": 896,
+            "north": 768,
+            "northwest": 640,
+            "west": 512,
+            "southwest": 384
+        }
         if not os.path.exists(path):
             raise FileNotFoundError(f"Spritesheet not found {path}")
+        
+        self.animations[name] = {d: {} for d in directions}
+        for i in range(15):
+            for direct, y in directions.items():
+                self.animations[name][direct][i] = (128 * i, y, 128, 128)
         return pygame.image.load(path).convert_alpha()
     
     def get_frame(self, animation_name, direction, frame_set):

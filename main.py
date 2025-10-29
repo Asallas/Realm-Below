@@ -10,7 +10,7 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Realm Below")
 clock = pygame.time.Clock()
 
-player = Player((0,0), 1)
+player = Player((0,0), .5)
 
 target_size = (500,500)
 target_rect = pygame.Rect(

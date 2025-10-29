@@ -2,26 +2,24 @@ import pygame
 from character import Character
 class Player(Character):
     def __init__(self, position, scale=2):
-        super().__init__(self, position, scale)
+        super().__init__(position, scale)
 
         # Load the image file sprite sheet
         self.sheets = {
-            "walk" : self.load_sheet("Spritesheets/PlayerAnimations/Walk.png"),
-            "run" : self.load_sheet("Spritesheets/PlayerAnimations/Run.png"),
-            "idle": self.load_sheet("Spritesheets/PlayerAnimations/Idle.png"),
-            "roll" : self.load_sheet("Spritesheets/PlayerAnimations/Rolling.png"),
-            "attack1": self.load_sheet("Spritesheets/PlayerAnimations/Melee.png"),
-            "attack2": self.load_sheet("Spritesheets/PlayerAnimations/MeleeRun.png"),
-            "counter": self.load_sheet("Spritesheets/PlayerAnimations/Counter.png"),
-            "block_start": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockStart.png"),
-            "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png"),
-            "damaged": self.load_sheet("Spritesheets/PlayerAnimations/Take/Damage.png"),
-            "dead" : self.load_sheet("Spritesheets/PlayerAnimations/Die.png")
+            "walk" : self.load_sheet("Spritesheets/PlayerAnimations/Walk.png", "walk"),
+            "run" : self.load_sheet("Spritesheets/PlayerAnimations/Run.png", "run"),
+            "idle": self.load_sheet("Spritesheets/PlayerAnimations/Idle.png", "idle"),
+            "roll" : self.load_sheet("Spritesheets/PlayerAnimations/Rolling.png", "roll"),
+            "attack1": self.load_sheet("Spritesheets/PlayerAnimations/Melee.png", "attack1"),
+            "attack2": self.load_sheet("Spritesheets/PlayerAnimations/MeleeRun.png", "attack2"),
+            "counter": self.load_sheet("Spritesheets/PlayerAnimations/Counter.png", "counter"),
+            "block_start": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockStart.png", "block_start"),
+            "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png", "block_holding"),
+            "damaged": self.load_sheet("Spritesheets/PlayerAnimations/TakeDamage.png", "damaged"),
+            "dead" : self.load_sheet("Spritesheets/PlayerAnimations/Die.png", "dead")
         }
         self.health = 10    
-        self.scale = scale # Scaling factor for sprites
-        self.frame_index = 0 # Initialize a frame counter
-        super().distance = 15 # Set walking distance
+        self.distance = 15 # Set walking distance
         self.prev_facing = None # Save previous facing for restoration during rolling
         
         # Animation timing delay
@@ -58,7 +56,6 @@ class Player(Character):
 
         w,h,ox,oy = self.hitbox_data[self.facing]
 
-        self.rect = pygame.Rect(*position, 128,128)
         self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
         # Attack polygon points
         self.attack_hitbox_points = [
@@ -66,32 +63,14 @@ class Player(Character):
             (50,-30), # Forward upper point
             (50,30) # forward lower point
         ]
-        self.attack_hitbox = None
+        
         self.attack_active = False
         self.attack_timer = 0
 
-      # Animations
-        self.animations = {}
-        # Define directions for animations
-        directions = {
-            "south":256,
-            "southeast": 128,
-            "east": 0,
-            "northeast": 896,
-            "north": 768,
-            "northwest": 640,
-            "west": 512,
-            "southwest": 384
-        }
+        # Animations
+        
         self.non_interruptible = {"attack1", "attack2", "roll", "counter", "block_start", "damaged", "dead"}
         self.looping = {'walk', 'run', 'idle', 'block_hold'}
-
-        for anim_name, sheet in self.sheets.items():
-            self.animations[anim_name] = {d: {} for d in directions}
-            for i in range(15):
-                for direct, y in directions.items():
-                    self.animations[anim_name][direct][i] = (128 * i, y, 128, 128)
-
                 
         # Set default animation
         self.current_animation = "idle"
@@ -99,6 +78,12 @@ class Player(Character):
         self.rect = self.image.get_rect(topleft = position)
         
 # ------------------ Update & Animation --------------------------
+    def set_animation(self, animation_name):
+        if animation_name in self.non_interruptible:
+            self.animation_delay = 2
+        else:
+            self.animation_delay = 5
+        super().set_animation(animation_name)
     def update(self):
         if self.roll_cooldown > 0:
             self.roll_cooldown -= 1
@@ -146,27 +131,10 @@ class Player(Character):
         
 # ------------------------------ Movement -------------------------
     def move(self, direction):
-        if self.locked or self.rolling:
+        if self.locked or self.rolling or self.blocking or self.block_holding:
             return
-        if self.blocking or self.block_holding:
-            return
-
         self.set_animation('run')
-        self.facing = direction
-        delta = 0
-        if direction in ('northeast', 'northwest', 'southeast', 'southwest'):
-            delta = self.distance / sqrt(2)
-        else:
-            delta = self.distance
-        
-        if 'north' in direction:
-            self.rect.y -= delta
-        if 'south' in direction:
-            self.rect.y += delta
-        if 'east' in direction:
-            self.rect.x += delta
-        if 'west' in direction:
-            self.rect.x -= delta
+        super().move(direction)
         
 
     def stand(self):
