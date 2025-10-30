@@ -310,9 +310,3 @@ class Player(Character):
         }
         return opposites.get(direction, 'south')
     
-    # -------------- Debug draw ------------------------
-    def draw(self, screen):
-        if self.hitbox:
-            pygame.draw.rect(screen, pygame.Color("yellow"), self.hitbox, 2)
-        if self.attack_hitbox:
-            pygame.draw.polygon(screen, pygame.Color("blue"), self.attack_hitbox, 2)

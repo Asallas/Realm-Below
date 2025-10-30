@@ -1,6 +1,7 @@
 import pygame, sys
 
 from player import Player
+from enemys import MeleeEnemy, RangeEnemy
 
 pygame.init()
 SCREEN_WIDTH = 1920
@@ -11,6 +12,9 @@ pygame.display.set_caption("Realm Below")
 clock = pygame.time.Clock()
 
 player = Player((0,0), .5)
+enemy = MeleeEnemy((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), .5)
+enemy2 = RangeEnemy((SCREEN_WIDTH // 2 + 200, SCREEN_HEIGHT // 2 - 200), .5)
+
 
 target_size = (500,500)
 target_rect = pygame.Rect(
@@ -58,8 +62,11 @@ while running:
             player.roll()
         else:
             player.stand()
-    
+    enemy.target = player.rect
+    enemy2.target = player.rect    
     player.update()
+    enemy2.update()
+    enemy.update()
 
     if player.hitbox and player.hitbox.colliderect(target_rect):
         target_color = pygame.Color("red")
@@ -72,8 +79,11 @@ while running:
     pygame.draw.rect(screen, target_color, target_rect)
 
     screen.blit(player.image, player.rect)
+    screen.blit(enemy.image, enemy.rect)
+    screen.blit(enemy2.image, enemy2.rect)
 
     player.draw(screen)
+    enemy.draw(screen)
 
     pygame.draw.rect(screen, pygame.Color("blue"), player.rect,2)
     pygame.display.flip()
