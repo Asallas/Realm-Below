@@ -11,9 +11,9 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Realm Below")
 clock = pygame.time.Clock()
 
-player = Player((0,0), .5)
-enemy = MeleeEnemy((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), .5)
-enemy2 = RangeEnemy((SCREEN_WIDTH // 2 + 200, SCREEN_HEIGHT // 2 - 200), .5)
+player = Player((0,0), 1)
+enemy = MeleeEnemy((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), 1)
+enemy2 = RangeEnemy((SCREEN_WIDTH // 2 + 200, SCREEN_HEIGHT // 2 - 200), 1)
 
 
 target_size = (500,500)
@@ -79,11 +79,12 @@ while running:
     pygame.draw.rect(screen, target_color, target_rect)
 
     screen.blit(player.image, player.rect)
-    screen.blit(enemy.image, enemy.rect)
+    #screen.blit(enemy.image, enemy.rect)
     screen.blit(enemy2.image, enemy2.rect)
 
     player.draw(screen)
-    enemy.draw(screen)
+    #enemy.draw(screen)
+    enemy2.draw(screen)
 
     pygame.draw.rect(screen, pygame.Color("blue"), player.rect,2)
     pygame.display.flip()

@@ -118,26 +118,28 @@ class RangeEnemy(Character):
         }
         
         self.target = None
-        self.attack_range = 100
-        self.attack_cooldown = 1500
+        self.preferred_distance = 275
+        self.min_distance = 50
+        self.max_distance = 350
+        self.attack_cooldown = 2000
         self.last_attack_time = 0
-        self.speed = 5
+        self.speed = 3
         
         self.health = 5
 
-                # --------------------- Hitboxes ------------------
+        # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
         self.scale_ratio = self.scale_base / self.scale
         # (width, height, x offset, y offset)
         self.hitbox_data = {
-            "north": (58 * self.scale_ratio, 102 * self.scale_ratio, 105 * self.scale_ratio, 73 * self.scale_ratio),
-            "south": (58 * self.scale_ratio, 99 * self.scale_ratio, 101 * self.scale_ratio, 83 * self.scale_ratio),
-            "east" : (51 * self.scale_ratio, 98 * self.scale_ratio, 110 * self.scale_ratio, 78 * self.scale_ratio),
-            "west" : (47 * self.scale_ratio, 98 * self.scale_ratio, 100 * self.scale_ratio, 78 * self.scale_ratio),
-            "northeast" : (45 * self.scale_ratio, 100 * self.scale_ratio, 110 * self.scale_ratio, 75 * self.scale_ratio),
-            "northwest" : (50 * self.scale_ratio, 100 * self.scale_ratio, 98 * self.scale_ratio, 72 * self.scale_ratio),
-            "southeast" : (55 * self.scale_ratio, 95 * self.scale_ratio, 105 * self.scale_ratio, 83 * self.scale_ratio),
-            "southwest" : (42 * self.scale_ratio, 100 * self.scale_ratio, 108 * self.scale_ratio, 81 * self.scale_ratio)
+            "north": (58 * self.scale_ratio, 102 * self.scale_ratio, 113 * self.scale_ratio, 76 * self.scale_ratio),
+            "south": (48 * self.scale_ratio, 101 * self.scale_ratio, 98 * self.scale_ratio, 86 * self.scale_ratio),
+            "east" : (53 * self.scale_ratio, 98 * self.scale_ratio, 110 * self.scale_ratio, 90 * self.scale_ratio),
+            "west" : (54 * self.scale_ratio, 98 * self.scale_ratio, 96 * self.scale_ratio, 78 * self.scale_ratio),
+            "northeast" : (45 * self.scale_ratio, 102 * self.scale_ratio, 114 * self.scale_ratio, 85 * self.scale_ratio),
+            "northwest" : (57 * self.scale_ratio, 102 * self.scale_ratio, 100 * self.scale_ratio, 72 * self.scale_ratio),
+            "southeast" : (57 * self.scale_ratio, 95 * self.scale_ratio, 100 * self.scale_ratio, 95 * self.scale_ratio),
+            "southwest" : (42 * self.scale_ratio, 101 * self.scale_ratio, 101 * self.scale_ratio, 82 * self.scale_ratio)
         }
         w,h,ox,oy = self.hitbox_data[self.facing]
 
@@ -172,20 +174,29 @@ class RangeEnemy(Character):
                     self.facing = "south"
                     print("Error would have occurred")
 
+            move_vec = pygame.Vector2(0,0)
+            
+            zone = 50
+            close = dist < self.preferred_distance - zone
+            far = dist > self.preferred_distance + zone
             if not self.locked:
-                if dist > self.attack_range:
-                    move_vec = to_target.normalize() * self.speed
-                    self.rect.centerx += move_vec.x
-                    self.rect.centery += move_vec.y
+                if close:
+                    move_vec = -to_target.normalize() * self.speed
                     self.set_animation("walk") 
+                elif far:
+                    move_vec = to_target.normalize() * self.speed
+                    self.set_animation("walk")
             
                 else:
                     if now - self.last_attack_time >= self.attack_cooldown:
                         self.set_animation("attack1")
                         self.locked = True
                         self.last_attack_time = now
+                        print("Attack1 happened")
                     else:
                         self.set_animation("idle")
+                self.rect.centerx += move_vec.x
+                self.rect.centery += move_vec.y
         
         else:
             self.set_animation("idle")

@@ -1,5 +1,5 @@
 import pygame, sys, random
-from enemys import MeleeEnemy
+from enemys import RangeEnemy
 
 pygame.init()
 
@@ -11,7 +11,7 @@ pygame.display.set_caption("Enemy Facing + Hitbox Test")
 clock = pygame.time.Clock()
 
 # --- Create an enemy instance ---
-enemy = MeleeEnemy((WIDTH//2 - 128, HEIGHT//2 - 128), .5)
+enemy = RangeEnemy((WIDTH//2 - 128, HEIGHT//2 - 128), .5)
 
 # Optional — set target to None so it doesn’t chase anything
 enemy.target = None
@@ -21,7 +21,7 @@ DIRECTIONS = [
     "north", "south", "east", "west", "northeast", "northwest", "southeast",
     "southwest"
 ]
-direction_index = 1
+direction_index = 0
 rotate_timer = 0
 rotate_interval = 2000  # milliseconds
 
