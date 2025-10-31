@@ -51,10 +51,14 @@ def get_polygon_bounding_box(points):
 # ------------- Main Loop ----------------
 running = True
 game_over = False
+you_win = False
 
 font = pygame.font.Font(None, 160)
 game_over_text = font.render("GAME OVER", True, (255, 0, 0))
 game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+
+win_text = font.render("YOU WIN!", True, (0, 255, 0))
+win_rect = win_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
 
 while running:
 
@@ -66,9 +70,12 @@ while running:
     if keys[pygame.K_ESCAPE]:
         running = False
     
-    if game_over:
+    if game_over or you_win:
         screen.fill((0,0,0))
-        screen.blit(game_over_text, game_over_rect)
+        if game_over:
+            screen.blit(game_over_text, game_over_rect)
+        elif you_win:
+            screen.blit(win_text, win_rect)
         pygame.display.flip()
         clock.tick()
         continue
@@ -173,14 +180,20 @@ while running:
         all_sprites.remove(player)
         game_over = True
         continue
+
+
+    if len(enemies) == 0:
+        you_win = True
+        continue
+
     screen.fill(TEMP_COLOR)
 
     for sprite in all_sprites:
         screen.blit(sprite.image, sprite.rect)
         sprite.draw_healthbar(screen)
 
-    if enemy.attack_active and enemy.attack_hitbox:
-        enemy.draw_translucent_polygon(screen, enemy.attack_hitbox, (255, 0, 0, 100))
+    # if enemy.attack_active and enemy.attack_hitbox:
+    #     enemy.draw_translucent_polygon(screen, enemy.attack_hitbox, (255, 0, 0, 100))
 
     for enemy in enemies:
         if hasattr(enemy, "projectiles"):
