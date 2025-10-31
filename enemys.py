@@ -234,7 +234,7 @@ class RangeEnemy(Character):
             if self.frame_index >= self.attack_fire_frame:
                 self.fire_projectile()
                 self.has_fired = True
-        if self.current_animation != "attacl1":
+        if self.current_animation != "attack1":
             self.has_fired = False
         
         self.update_animations()

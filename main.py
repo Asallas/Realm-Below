@@ -50,6 +50,12 @@ def get_polygon_bounding_box(points):
 # all_sprites.remove(enemy3)
 # ------------- Main Loop ----------------
 running = True
+game_over = False
+
+font = pygame.font.Font(None, 160)
+game_over_text = font.render("GAME OVER", True, (255, 0, 0))
+game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+
 while running:
 
     for event in pygame.event.get():
@@ -57,6 +63,18 @@ while running:
             running = False
 
     keys = pygame.key.get_pressed()
+    if keys[pygame.K_ESCAPE]:
+        running = False
+    
+    if game_over:
+        screen.fill((0,0,0))
+        screen.blit(game_over_text, game_over_rect)
+        pygame.display.flip()
+        clock.tick()
+        continue
+
+
+
     if keys[pygame.K_g]:
         player.block()
     else:
@@ -151,7 +169,10 @@ while running:
             enemies.remove(enemy)
             all_sprites.remove(enemy)
     
-
+    if player.is_dead:
+        all_sprites.remove(player)
+        game_over = True
+        continue
     screen.fill(TEMP_COLOR)
 
     for sprite in all_sprites:

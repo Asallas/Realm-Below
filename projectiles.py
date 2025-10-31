@@ -1,5 +1,4 @@
-# projectile.py
-import pygame, math
+import pygame
 
 class Projectile(pygame.sprite.Sprite):
     def __init__(self, position, target_pos, speed=12, color=(255, 0, 0), radius=10):
