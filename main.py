@@ -16,9 +16,10 @@ clock = pygame.time.Clock()
 player = Player((0,0), 1)
 enemy1 = Boss((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), .5)
 enemy2 = MeleeEnemy((SCREEN_WIDTH // 2 + 200, SCREEN_HEIGHT // 2 - 200), .75)
+enemy3 = RangeEnemy((SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 300), 1)
 
-all_sprites = pygame.sprite.Group(player, enemy1, enemy2)
-enemies = pygame.sprite.Group(enemy1, enemy2)
+all_sprites = pygame.sprite.Group(player, enemy1, enemy2, enemy3)
+enemies = pygame.sprite.Group(enemy1, enemy2, enemy3)
 
 
 TEMP_COLOR = (48,69,41)
@@ -43,8 +44,10 @@ def get_polygon_bounding_box(points):
 
     return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
 
-enemies.remove(enemy1)
-all_sprites.remove(enemy1)
+# enemies.remove(enemy1)
+# all_sprites.remove(enemy1)
+# enemies.remove(enemy3)
+# all_sprites.remove(enemy3)
 # ------------- Main Loop ----------------
 running = True
 while running:
@@ -95,6 +98,11 @@ while running:
         sprite.update_death()
         sprite.update_invulnerability()
         sprite.update_hit_stun()
+    
+    # ------ Projectile Update ======
+    for enemy in enemies:
+        if hasattr(enemy, "projectiles"):
+            enemy.projectiles.update()
 
     # -------------- Player Attack collision ---------------------
     if player.attack_active and player.attack_hitbox:
@@ -109,6 +117,33 @@ while running:
                         enemy.take_damage(20, player.facing)
                         player.attack_registered = True
                         print("That's a hit")
+    
+    # ---------------- Enemy Attack Collision ---------------
+    for enemy in enemies:
+        if enemy.is_dead or enemy.is_dying:
+            continue
+        if player.hitbox:
+            if getattr(enemy, "attack_active", False) and getattr(enemy, "attack_hitbox", None):
+                poly_bbox = get_polygon_bounding_box(enemy.attack_hitbox)
+                if poly_bbox.colliderect(player.hitbox):
+                    if polygon_rect_collision(enemy.attack_hitbox, player.hitbox):
+                        # Deal damage to player
+                        player.take_damage(10, enemy.facing)
+                        enemy.attack_registered = True
+                        print(f"{enemy.__class__.__name__} hit the player!")
+
+            if hasattr(enemy, "projectiles"):
+                for projectile in list(enemy.projectiles):
+                    if projectile.rect.colliderect(player.hitbox):
+                        player.take_damage(10, enemy.facing)
+                        enemy.projectiles.remove(projectile)
+                        enemy.attack_registered = True
+                        print(f"Projectile from {enemy.__class__.__name__} hit player!")
+
+                    # Optionally remove projectiles off-screen
+                    if (projectile.rect.right < 0 or projectile.rect.left > SCREEN_WIDTH or
+                        projectile.rect.bottom < 0 or projectile.rect.top > SCREEN_HEIGHT):
+                        enemy.projectiles.remove(projectile)
     
     
     for enemy in list(enemies):
@@ -125,6 +160,12 @@ while running:
 
     if enemy.attack_active and enemy.attack_hitbox:
         enemy.draw_translucent_polygon(screen, enemy.attack_hitbox, (255, 0, 0, 100))
+
+    for enemy in enemies:
+        if hasattr(enemy, "projectiles"):
+            enemy.projectiles.draw(screen)
+
+    
     pygame.display.flip()
     clock.tick(60)
 

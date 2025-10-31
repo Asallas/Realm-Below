@@ -37,6 +37,7 @@ class Player(Character):
         self.roll_target_pos = None
         self.roll_cooldown = 0
         self.roll_cooldown_max = 60
+        self.invulnerable = 180
 
         # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
@@ -71,6 +72,11 @@ class Player(Character):
         self.attack_registered = False
         self.attack_active = False
         self.attack_timer = 0
+
+        # ----------- Stun flag ---------
+        self.stunned = False
+        self.hit_stun_duration = 30
+        self.hit_stun_timer = 0
 
         # Animations
         
@@ -135,7 +141,7 @@ class Player(Character):
         
 # ------------------------------ Movement -------------------------
     def move(self, direction):
-        if self.locked or self.rolling or self.blocking or self.block_holding:
+        if self.locked or self.rolling or self.blocking or self.block_holding or self.stunned:
             return
         self.set_animation('run')
         super().move(direction)
@@ -234,6 +240,47 @@ class Player(Character):
         self.set_animation('idle')
         self._reset_hitbox()
         
+    #-------- Stun & Damage ------------
+
+    def take_damage(self, amount, attacker_facing):
+        # ignore damage if dying/dead or invulnerable
+        if self.is_dead or self.is_dying or self.invulnerable:
+            return
+        
+        self.health -= amount
+        print(f"{self.__class__.__name__} took {amount} damage - HP: {self.health}")
+
+        # apply immediate knockback
+        knockback_strength = 15
+        dir_vec = self._get_direction_vector(attacker_facing)
+        self.knockback_velocity = -dir_vec * knockback_strength
+
+        # Start invulnerability window
+        self.invulnerable = True
+        self.invuln_timer = 0
+
+        # Set hitstun state to stop enemy from moving
+        self.stunned = True
+        self.hit_stun_timer = 0
+
+        if getattr(self, "current_animation", "") in getattr(self, "non_interruptible", set()):
+            self.pending_hit = True
+        else:
+            self.pending_hit = False
+            self.set_animation("hit")
+        if self.health <= 0:
+            self.health = 0
+            self.die()
+
+    def update_hit_stun(self):
+        if self.stunned:
+            self.hit_stun_timer += 1
+            if self.hit_stun_timer >= self.hit_stun_duration:
+                self.stunned = False
+                self.hit_stun_timer = 0
+                if self.current_animation == "hit":
+                    self.set_animation("idle")
+ 
     # ---------------- Helper Functions -------------------            
         
     def _reset_hitbox(self):
@@ -241,3 +288,4 @@ class Player(Character):
         self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
     
     
+

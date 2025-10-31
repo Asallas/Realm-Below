@@ -1,5 +1,6 @@
 import pygame
 from character import Character
+from projectiles import Projectile
 class MeleeEnemy(Character):
     def __init__(self, position, scale):
         super().__init__(position, scale)
@@ -139,7 +140,7 @@ class RangeEnemy(Character):
         
         self.target = None
         self.preferred_distance = 275
-        self.min_distance = 50
+        self.min_distance = 100
         self.max_distance = 350
         self.attack_cooldown = 2000
         self.last_attack_time = 0
@@ -172,6 +173,12 @@ class RangeEnemy(Character):
         self.current_animation = "idle"
         self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
         self.rect = self.image.get_rect(topleft = position) 
+
+        # -------------- Projectiles ------------
+        self.projectiles = pygame.sprite.Group()
+
+        self.attack_fire_frame = 5
+        self.has_fired = False
     
     def update(self):
         if self.is_dead:
@@ -212,16 +219,42 @@ class RangeEnemy(Character):
             
                 else:
                     if now - self.last_attack_time >= self.attack_cooldown:
-                        self.set_animation("attack1")
-                        self.locked = True
+                        self.attack()
                         self.last_attack_time = now
                     else:
                         self.set_animation("idle")
+
                 self.rect.centerx += move_vec.x
                 self.rect.centery += move_vec.y
         
         else:
             self.set_animation("idle")
         
+        if self.current_animation == "attack1" and not self.has_fired:
+            if self.frame_index >= self.attack_fire_frame:
+                self.fire_projectile()
+                self.has_fired = True
+        if self.current_animation != "attacl1":
+            self.has_fired = False
+        
         self.update_animations()
         self._update_hitboxes()
+        self.projectiles.update()
+
+    def attack(self):
+        if not self.locked:
+            self.frame_index = 0
+            self.locked = True
+            self.set_animation("attack1")
+            self.has_fired = False
+    def fire_projectile(self):
+        if not self.target:
+            return
+        
+        projecile = Projectile(self.rect.center, self.target.center)
+        self.projectiles.add(projecile)
+        print(f"{self.__class__.__name__} fired a projectile")
+    
+    def draw(self, screen):
+        super().draw(screen)
+        self.projectiles.draw(screen)

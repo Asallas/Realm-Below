@@ -23,7 +23,7 @@ class Boss(Character):
         self.attack_range = 100
         self.attack_cooldown = 3000
         self.last_attack_time = 0
-        self.speed = 5
+        self.speed = 1
         
         # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
