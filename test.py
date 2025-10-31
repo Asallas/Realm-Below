@@ -1,5 +1,6 @@
 import pygame, sys, random
-from enemys import RangeEnemy
+from enemys import RangeEnemy, MeleeEnemy
+from boss import Boss
 
 pygame.init()
 
@@ -11,17 +12,17 @@ pygame.display.set_caption("Enemy Facing + Hitbox Test")
 clock = pygame.time.Clock()
 
 # --- Create an enemy instance ---
-enemy = RangeEnemy((WIDTH//2 - 128, HEIGHT//2 - 128), .5)
+enemy = Boss((WIDTH//2 - 128, HEIGHT//2 - 128), .5)
 
 # Optional — set target to None so it doesn’t chase anything
 enemy.target = None
 
 # --- Rotation setup ---
 DIRECTIONS = [
-    "north", "south", "east", "west", "northeast", "northwest", "southeast",
-    "southwest"
+    "east", "southeast", "south", "southwest",
+    "west", "northwest", "north", "northeast"
 ]
-direction_index = 0
+direction_index = 2
 rotate_timer = 0
 rotate_interval = 2000  # milliseconds
 
@@ -44,12 +45,13 @@ while running:
     rotate_timer += dt
     if rotate_timer >= rotate_interval:
         rotate_timer = 0
-        #direction_index = (direction_index + 1) % len(DIRECTIONS)
+        direction_index = (direction_index + 1) % len(DIRECTIONS)
         enemy.facing = DIRECTIONS[direction_index]
         enemy.set_animation("idle")
 
     # --- Update + Draw enemy ---
     enemy.update()
+    enemy.draw(WIN)
     WIN.blit(enemy.image, enemy.rect.topleft)
     draw_hitbox(WIN, enemy.hitbox)
 

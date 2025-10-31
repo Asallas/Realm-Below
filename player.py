@@ -1,4 +1,4 @@
-import pygame
+import pygame, math
 from character import Character
 class Player(Character):
     def __init__(self, position, scale=2):
@@ -15,10 +15,9 @@ class Player(Character):
             "counter": self.load_sheet("Spritesheets/PlayerAnimations/Counter.png", "counter"),
             "block_start": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockStart.png", "block_start"),
             "block_holding": self.load_sheet("Spritesheets/PlayerAnimations/ShieldBlockMid.png", "block_holding"),
-            "damaged": self.load_sheet("Spritesheets/PlayerAnimations/TakeDamage.png", "damaged"),
-            "dead" : self.load_sheet("Spritesheets/PlayerAnimations/Die.png", "dead")
+            "hit": self.load_sheet("Spritesheets/PlayerAnimations/TakeDamage.png", "hit"),
+            "death" : self.load_sheet("Spritesheets/PlayerAnimations/Die.png", "death")
         }
-        self.health = 10    
         self.distance = 15 # Set walking distance
         self.prev_facing = None # Save previous facing for restoration during rolling
         
@@ -58,18 +57,24 @@ class Player(Character):
 
         self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
         # Attack polygon points
-        self.attack_hitbox_points = [
-            (0,0), # Center
-            (50,-30), # Forward upper point
-            (50,30) # forward lower point
+
+        base_points = [
+            (0, 0), (40, -60), (90, -40), (120, 0),
+            (110, 40), (80, 70), (30,90)
         ]
-        
+
+        self.attack_hitbox_points = [
+            (x * self.scale_ratio, y * self.scale_ratio) for (x,y) in base_points
+        ]
+
+        # ----------- Attack Flags ------------
+        self.attack_registered = False
         self.attack_active = False
         self.attack_timer = 0
 
         # Animations
         
-        self.non_interruptible = {"attack1", "attack2", "roll", "counter", "block_start", "damaged", "dead"}
+        self.non_interruptible = {"attack1", "attack2", "roll", "counter", "block_start", "hit", "death"}
         self.looping = {'walk', 'run', 'idle', 'block_hold'}
                 
         # Set default animation
@@ -91,14 +96,13 @@ class Player(Character):
         if self.rolling:
             self._update_roll()
         
-        self.update_animations()
-        self._update_hitboxes()
+        if not self.is_dead:
+            self.update_animations()
+            self.update_knockback()
+            self._update_hitboxes()
+            
 
-        if self.attack_active:
-            self.attack_timer -= 1
-            if self.attack_timer <= 0:
-                self.attack_active = False
-                self.attack_hitbox = None
+        self.update_attack()
 
     
     def update_animations(self):
@@ -150,57 +154,23 @@ class Player(Character):
             self.set_animation("attack1")
             self.frame_index = 0
             self.locked = True
-            self._activate_attack_hitbox(15)
+            self._activate_attack_hitbox(30)
             
     def attack2(self):
         if not self.locked and not self.rolling:
             self.set_animation("attack2")
             self.frame_index = 0
             self.locked = True
-            self._activate_attack_hitbox(15)
+            self._activate_attack_hitbox(30)
 
     def counter(self):
         if not self.locked and not self.rolling:
             self.set_animation("counter")
             self.frame_index = 0
             self.locked = True
-            self._activate_attack_hitbox(12)
+            self._activate_attack_hitbox(20)
 
-    def _activate_attack_hitbox(self,duration):
-        self.attack_active = True
-        self.attack_timer = duration
-        
-        facing_mod = {
-            "north" : (0,-1), "south" : (0,1), "east" : (1,0), "west": (-1,0),
-            "northeast" : (0.7, -0.7), "northwest" : (-0.7, -0.7),
-            "southeast" : (0.7, 0.7), "southwest" : (-0.7, 0.7)
-        }
-        fx, fy = facing_mod[self.facing]
-        cx, cy = self.rect.center
-
-        self.attack_hitbox = [
-            (cx + px * fx, cy + py * fy)
-            for px,py in self.attack_hitbox_points
-        ]
-# ---------------------- Damage ---------------------
-
-    def _take_damage(self):
-        self.set_animation("damaged")
-        self.frame_index = 0
-        self.locked = True
-        self.hitbox = None
-        self.health -= 1
-        # Player gets moved back a set number of tiles
-        
-        
-    def knockback(self):
-        pass
     
-    def _player_death(self):
-        self.set_animation("dead")
-        self.frame_index = 0
-        self.locked  = True
-        # Only thing that should happen since killing sprite is in main game loop
         
 
 # ---------------------- Block Logic -------------------
@@ -264,49 +234,10 @@ class Player(Character):
         self.set_animation('idle')
         self._reset_hitbox()
         
-
-    # ---------------- Helper Functions -------------------
-    def _update_hitboxes(self):
-        if self.hitbox:
-            w,h,ox,oy = self.hitbox_data[self.facing]
-            self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
-        if self.attack_hitbox and self.attack_active:
-            cx,cy = self.rect.center
-            facing_mod = {
-                "north" : (0,-1), "south" : (0,1), 'east' : (1,0), 'west': (-1,0),
-                "northeast" : (0.7, -0.7), "northwest" : (-0.7, -0.7),
-                "southeast" : (0.7, 0.7), "southwest" : (-0.7, 0.7)
-            }
-            fx, fy = facing_mod[self.facing]
-            self.attack_hitbox = [
-                (cx + px * fx, cy + py * fy)
-                for px,py in self.attack_hitbox_points
-            ]
-            
+    # ---------------- Helper Functions -------------------            
         
     def _reset_hitbox(self):
         w,h,ox,oy = self.hitbox_data[self.facing]
         self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
-
-    def _get_direction_vector(self, direction):
-        mapping = {
-            'north': pygame.Vector2(0, -1),
-            'south': pygame.Vector2(0, 1),
-            'east': pygame.Vector2(1, 0),
-            'west': pygame.Vector2(-1, 0),
-            'northeast': pygame.Vector2(1, -1).normalize(),
-            'northwest': pygame.Vector2(-1, -1).normalize(),
-            'southeast': pygame.Vector2(1, 1).normalize(),
-            'southwest': pygame.Vector2(-1, 1).normalize()
-        }
-        return mapping.get(direction, pygame.Vector2(0,0))
     
-    def _get_opposite_direction(self, direction):
-        opposites = {
-            'north' : 'south', 'south' : 'north',
-            'east' : 'west', 'west' : 'east',
-            'northeast' : 'southwest', 'southwest' : 'northeast',
-            'northwest' : 'southeast', 'southeast' : 'northwest'
-        }
-        return opposites.get(direction, 'south')
     

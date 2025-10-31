@@ -6,16 +6,23 @@ class MeleeEnemy(Character):
         self.sheets = {
             "walk" : self.load_sheet("Spritesheets/MeleeEnemy/Walk.png", "walk"),
             "idle" : self.load_sheet("Spritesheets/MeleeEnemy/Idle.png", "idle"),
-            "attack1" : self.load_sheet("Spritesheets/MeleeEnemy/Attack2.png", "attack1")
+            "attack1" : self.load_sheet("Spritesheets/MeleeEnemy/Attack2.png", "attack1"),
+            "attack2" : self.load_sheet("Spritesheets/MeleeEnemy/Attack2.png", "attack2"),
+            "attack3" : self.load_sheet("Spritesheets/MeleeEnemy/Attack3.png", "attack3"),
+            "castspell" : self.load_sheet("Spritesheets/MeleeEnemy/CastSpell.png", "castspell"),
+            "idle2" : self.load_sheet("Spritesheets/MeleeEnemy/Idle2.png", "idle2"),
+            "AttackRun" : self.load_sheet("Spritesheets/MeleeEnemy/AttackRun.png", "AttackRun"),
+            "special1" : self.load_sheet("Spritesheets/MeleeEnemy/Special1.png", "special1"),
+            "special2" : self.load_sheet("Spritesheets/MeleeEnemy/Special2.png", "special2"),
+            "hit": self.load_sheet("Spritesheets/MeleeEnemy/TakeDamage.png", "hit"),
+            "death" : self.load_sheet("Spritesheets/MeleeEnemy/Die.png", "death") 
         }
         
         self.target = None
-        self.attack_range = 100
+        self.attack_range = 75
         self.attack_cooldown = 1500
         self.last_attack_time = 0
         self.speed = 5
-        
-        self.health = 5
 
                 # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
@@ -35,10 +42,20 @@ class MeleeEnemy(Character):
 
         self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
         
+        basePoints = [
+            (0, 0), (0,-8), (-70,-8),(-70, -55), (20, -55), (40, -50), (55,-45),(115, -10),
+            (110, 45), (90, 55), (50,80)
+
+        ]
+        # pause frame 6
+        self.attack_hitbox_points = [
+            (x * self.scale_ratio, y * self.scale_ratio) for (x,y) in basePoints
+        ]
+
         self.animation_timer = 0
         self.animation_delay = 5
         
-        self.non_interruptible = {"attack1"}
+        self.non_interruptible = {"attack1", "death", "hit"}
         self.looping = {"walk", "idle"}
 
         self.current_animation = "idle"
@@ -46,6 +63,12 @@ class MeleeEnemy(Character):
         self.rect = self.image.get_rect(topleft = position) 
 
     def update(self):
+        if self.is_dead:
+            return
+        if self.is_dying:
+            self.update_animations()
+            return
+        
         now = pygame.time.get_ticks()
         
         if self.target:
@@ -73,39 +96,27 @@ class MeleeEnemy(Character):
             
                 else:
                     if now - self.last_attack_time >= self.attack_cooldown:
-                        self.set_animation("attack1")
-                        self.locked = True
                         self.last_attack_time = now
+                        self.attack()
                     else:
                         self.set_animation("idle")
         
         else:
             self.set_animation("idle")
         
+        prev_frame = self.frame_index
         self.update_animations()
+        if self.current_animation == 'attack1':
+            if prev_frame < 6 <= self.frame_index and not self.attack_active:
+                self._activate_attack_hitbox(15)
         self._update_hitboxes()
+        self.update_attack()
         
-        
-            
-    def _get_vector_facing(self, vec):
-        angle = vec.angle_to(pygame.Vector2(1,0))
-        
-        if -22.5 <= angle < 22.5:
-            return 'east'
-        elif 22.5 <= angle < 67.5:
-            return 'northeast'
-        elif 67.6 <= angle < 112.5:
-            return 'north'
-        elif 112.5 <= angle < 157.5:
-            return 'northwest'
-        elif angle >= 157.5 or angle < -157.5:
-            return 'west'
-        elif -157.5 <= angle < -112.5:
-            return 'southwest'
-        elif -112.5 <= angle < -67.5:
-            return 'south'
-        elif -67.5 <= angle < -22.5:
-            return 'southeast'
+    def attack(self):
+        if not self.locked:
+            self.frame_index = 0
+            self.locked = True
+            self.set_animation("attack1")
         
 
 class RangeEnemy(Character):
@@ -114,7 +125,16 @@ class RangeEnemy(Character):
         self.sheets = {
             "walk" : self.load_sheet("Spritesheets/RangeEnemy/Walk.png", "walk"),
             "idle" : self.load_sheet("Spritesheets/RangeEnemy/Idle.png", "idle"),
-            "attack1" : self.load_sheet("Spritesheets/RangeEnemy/Attack3.png", "attack1")
+            "attack1" : self.load_sheet("Spritesheets/RangeEnemy/Attack1.png", "attack1"),
+            "attack2" : self.load_sheet("Spritesheets/RangeEnemy/Attack2.png", "attack2"),
+            "attack3" : self.load_sheet("Spritesheets/RangeEnemy/Attack3.png", "attack3"),
+            "castspell" : self.load_sheet("Spritesheets/RangeEnemy/CastSpell.png", "castspell"),
+            "idle2" : self.load_sheet("Spritesheets/RangeEnemy/Idle2.png", "idle2"),
+            "AttackRun" : self.load_sheet("Spritesheets/RangeEnemy/AttackRun.png", "AttackRun"),
+            "special1" : self.load_sheet("Spritesheets/RangeEnemy/Special1.png", "special1"),
+            "special2" : self.load_sheet("Spritesheets/RangeEnemy/Special2.png", "special2"), # Literally casting a fireball
+            "hit": self.load_sheet("Spritesheets/RangeEnemy/TakeDamage.png", "hit"),
+            "death" : self.load_sheet("Spritesheets/RangeEnemy/Die.png", "death")
         }
         
         self.target = None
@@ -125,8 +145,6 @@ class RangeEnemy(Character):
         self.last_attack_time = 0
         self.speed = 3
         
-        self.health = 5
-
         # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
         self.scale_ratio = self.scale_base / self.scale
@@ -148,7 +166,7 @@ class RangeEnemy(Character):
         self.animation_timer = 0
         self.animation_delay = 5
         
-        self.non_interruptible = {"attack1"}
+        self.non_interruptible = {"attack1", "death", "hit"}
         self.looping = {"walk", "idle"}
 
         self.current_animation = "idle"
@@ -156,6 +174,11 @@ class RangeEnemy(Character):
         self.rect = self.image.get_rect(topleft = position) 
     
     def update(self):
+        if self.is_dead:
+            return
+        if self.is_dying:
+            self.update_animations()
+            return
         now = pygame.time.get_ticks()
         
         if self.target:
@@ -192,7 +215,6 @@ class RangeEnemy(Character):
                         self.set_animation("attack1")
                         self.locked = True
                         self.last_attack_time = now
-                        print("Attack1 happened")
                     else:
                         self.set_animation("idle")
                 self.rect.centerx += move_vec.x
@@ -203,25 +225,3 @@ class RangeEnemy(Character):
         
         self.update_animations()
         self._update_hitboxes()
-        
-        
-            
-    def _get_vector_facing(self, vec):
-        angle = vec.angle_to(pygame.Vector2(1,0))
-        
-        if -22.5 <= angle < 22.5:
-            return 'east'
-        elif 22.5 <= angle < 67.5:
-            return 'northeast'
-        elif 67.6 <= angle < 112.5:
-            return 'north'
-        elif 112.5 <= angle < 157.5:
-            return 'northwest'
-        elif angle >= 157.5 or angle < -157.5:
-            return 'west'
-        elif -157.5 <= angle < -112.5:
-            return 'southwest'
-        elif -112.5 <= angle < -67.5:
-            return 'south'
-        elif -67.5 <= angle < -22.5:
-            return 'southeast'
