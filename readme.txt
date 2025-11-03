@@ -23,7 +23,7 @@ List of all items developed:
     - Spawns in and follows a line through the target position
     - does not update target position which would allow for player tracking
     - High priority to find a proper model instead of a ball
-    - Low priority to add varient that does player tracking
+    - Low priority to add variant that does player tracking
 - All sprites can take damage, deal damage, and die. When player dies it's a game over and when all enemies die it is a simple win screen
 - Still need to add proper environment, current green color is just a placeholder background
 
