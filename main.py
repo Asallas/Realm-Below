@@ -37,9 +37,13 @@ playable_rect = pygame.Rect(LEFT_WALL, TOP_WALL, SCREEN_WIDTH - LEFT_WALL - RIGH
 loaded_tiles = load_map("environment_layout.json")
 background, tile_cache = build_bg_surface(loaded_tiles, tileset, TILE_RECTS, TILE_SCALE, (SCREEN_WIDTH, SCREEN_HEIGHT))
 
-# ----------- Entities ------------------
+# ----------------- Entities ------------------
 player = Player((0,0), 1)
+player.facing = "north"
+player.health = 200
+player.max_health = 200
 
+# -------------- Boss Spawning -------------
 def boss_factory():
     b = Boss((0,0), .5)
     b.last_special_start = pygame.time.get_ticks()
@@ -56,11 +60,10 @@ if boss_from_intro:
     boss.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT//2)
 else:
     boss = Boss((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), .5)
-enemy2 = MeleeEnemy((SCREEN_WIDTH // 2 + 200, SCREEN_HEIGHT // 2 - 200), .75)
-enemy3 = RangeEnemy((SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 300), 1)
 
-all_sprites = pygame.sprite.Group(player, boss, enemy2, enemy3)
-enemies = pygame.sprite.Group(enemy2, enemy3)
+
+all_sprites = pygame.sprite.Group(player, boss)
+enemies = pygame.sprite.Group()
 
 
 TEMP_COLOR = (48,69,41)
@@ -85,10 +88,6 @@ def get_polygon_bounding_box(points):
 
     return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
 
-#enemies.remove(boss)
-#all_sprites.remove(boss)
-enemies.remove(enemy3)
-all_sprites.remove(enemy3)
 # ------------- Main Loop ----------------
 running = True
 game_over = False
@@ -127,7 +126,7 @@ while running:
         player.block()
     else:
         player.release_block()
-    if not player.blocking and not player.block_holding:
+    if not player.blocking and not player.block_holding and not player.is_dying:
         if keys[pygame.K_w]:
             player.attack()
         elif keys[pygame.K_q]:
@@ -163,7 +162,7 @@ while running:
     for enemy in enemies:
         enemy.target = player.rect  
 
-    if (boss.attack_seq_state is None and pygame.time.get_ticks() - boss.last_special_start >= 30000):
+    if (boss.summon_state is None and boss.attack_seq_state is None and pygame.time.get_ticks() - boss.last_special_start >= 30000):
         boss.start_attack_sequence()
         boss.last_special_start = pygame.time.get_ticks()
 
@@ -182,7 +181,7 @@ while running:
 
     # -------------- Player Attack collision ---------------------
     if player.attack_active and player.attack_hitbox:
-        if boss and not boss.is_dead and not boss.is_dying:
+        if boss and not boss.is_dead and not boss.is_dying and boss.hitbox:
             poly_bbox = get_polygon_bounding_box(player.attack_hitbox)
             if not player.attack_registered:
                 if poly_bbox.colliderect(boss.hitbox):
@@ -240,9 +239,40 @@ while running:
                     player.take_damage(10, boss.facing)
                     boss.attack_registered = True
                     print("Boss hit player")
-            
-            # handle for boss explosions later
-    
+
+    if boss and getattr(boss, "pending_spawns", None):
+        if not hasattr(boss, "_spawn_refs_total") or boss._spawn_refs_total is None:
+            boss._spawn_refs_total = []
+
+        for e in boss.pending_spawns:
+            all_sprites.add(e)
+            enemies.add(e)
+            boss._spawn_refs_total.append(e)
+
+
+        # clear pending_spawns so we don't re-add
+        boss.pending_spawns = []
+        print("Main: added boss minions to groups")
+
+    # If boss is waiting on spawned minions, check if they're all dead
+    if boss and boss.summon_state == "spawned_waiting":
+        # if any of the spawn_refs still exist in enemies group and are not dead -> wait
+        alive_left = 0
+        for e in boss._spawn_refs_total:
+            # treat "dead" if attribute is_dead True OR not in enemies group
+            if getattr(e, "is_dead", False):
+                continue
+            if e in enemies:
+                alive_left += 1
+
+        if alive_left == 0:
+            # all minions are gone -> resume boss
+            boss.summon_state = None
+            boss.invulnerable = False
+            boss.locked = False
+            boss._spawn_refs_total = []
+            boss._reset_hitbox()
+            print("Main: boss minions defeated; boss resumes")    
     for sprite in all_sprites:
         sprite.clamp_to_bounds(playable_rect)
     for enemy in list(enemies):

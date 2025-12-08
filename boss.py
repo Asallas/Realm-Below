@@ -63,8 +63,6 @@ class Explosion(pygame.sprite.Sprite):
             self.hitbox.update(hit_x, hit_y, hit_w, hit_h)
 
 
-
-
 class Boss(Character):
     def __init__(self, position, scale=2, SCREEN_WIDTH = 1920, SCREEN_HEIGHT = 1080):
         super().__init__(position, scale)
@@ -76,7 +74,7 @@ class Boss(Character):
             "attack1" : self.load_sheet("Spritesheets/BossEnemy/Attack1.png", "attack1",192,192),
             "attack2" : self.load_sheet("Spritesheets/BossEnemy/Attack2.png", "attack2",192,192),
             "attack3" : self.load_sheet("Spritesheets/BossEnemy/Attack3.png", "attack3",192,192),
-            "pummel" : self.load_sheet("Spritesheets/BossEnemy/Pummel.png", "pummel",192,192),
+            "crouch" : self.load_sheet("Spritesheets/BossEnemy/CrouchIdle.png", "crouch",192,192),
             "castspell" : self.load_sheet("Spritesheets/BossEnemy/CastSpell.png", "castspell",192,192),
             "idle2" : self.load_sheet("Spritesheets/BossEnemy/Idle2.png", "idle2",192,192),
             "AttackRun" : self.load_sheet("Spritesheets/BossEnemy/AttackRun.png", "AttackRun",192,192),
@@ -96,6 +94,7 @@ class Boss(Character):
         self.last_attack_time = 0
         self.speed = 1
 
+        #------ Special Sequence flage --------
         self.arena_center_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.attack_seq_state = None
         self.warning_alpha = 0
@@ -119,6 +118,18 @@ class Boss(Character):
 
         self.explosions = pygame.sprite.Group()
         
+        # ---------- Summon Flags ---------------
+        self.summon_phase_started = False
+        self.summon_state = None
+        self.pending_spawns = []
+        self._spawn_positions = []
+        self._spawn_scale = 1.0
+        self.summon_spawn_delay = 1000
+        self.next_summon_time = 0
+        self._spawn_queue = []
+        self._spawn_refs_total = []
+
+
         # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
         self.scale_ratio = self.scale_base / self.scale
@@ -146,8 +157,8 @@ class Boss(Character):
         self.animation_timer = 0
         self.animation_delay = 5
         
-        self.non_interruptible = {"attack1", "attack2", "attack3", "castspell", "AttackRun", "special1", "special2", "hit", "pummel"}
-        self.looping = {"walk", "idle", "run"}
+        self.non_interruptible = {"attack1", "attack2", "attack3", "castspell", "AttackRun", "special1", "special2", "hit"}
+        self.looping = {"walk", "idle", "run", "crouch"}
 
         self.current_animation = "idle"
         self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
@@ -158,6 +169,9 @@ class Boss(Character):
         if self.is_dying:
             self.update_animations()
             return
+        
+        self.check_enter_summon_phase()
+
         now = pygame.time.get_ticks()
 
         if self.attack_seq_state is not None:
@@ -206,6 +220,14 @@ class Boss(Character):
             if prev_frame < 6 <= self.frame_index and not self.attack_active:
                 self._activate_attack_hitbox(60)
 
+
+        if self.summon_state == "spawning":
+            if now >= self.next_summon_time and self._spawn_queue:
+                self._spawn_one_from_queue()
+                self.next_summon_time = now + self.summon_spawn_delay
+            if not self._spawn_queue:
+                self.summon_state = "spawned_waiting"
+                print("Boss has finished spawning")
         self._update_hitboxes()
         self.update_attack()
 
@@ -335,3 +357,82 @@ class Boss(Character):
             self.draw_warning_lines(screen, self.rect.center, self.dirs, length=900, a=self.warning_alpha, width=32)
         if len(self.explosions) > 0:
             self.explosions.draw(screen)
+
+    
+    # ---------- Summon phase helpers ----------
+    def check_enter_summon_phase(self):
+        """
+        Called from update() to detect the health threshold and start the sequence.
+        Boss will only start the summon after finishing idle/walk (i.e. not mid-attack).
+        """
+        if self.summon_phase_started:
+            return
+
+        # only trigger when hp <= 50% and boss is currently idle/walk
+        if self.health <= (self.max_health * 0.5):
+            if self.current_animation in ("idle", "walk") and not self.locked:
+                # ready to teleport + crouch
+                self.begin_summon_phase()
+                self.summon_phase_started = True
+
+    def begin_summon_phase(self):
+        """Teleport to center, play crouch animation, and prepare the spawn list."""
+        # teleport instantly
+        self.rect.center = self.arena_center_pos
+
+        # make boss invulnerable and locked while the phase runs
+        self.invulnerable = True
+        self.hitbox = None
+        self.locked = True
+
+        # set facing and play crouch
+        self.facing = "south"
+        self.set_animation("crouch")
+        self.frame_index = 0
+
+        # prepare spawn world positions relative to boss center:
+        cx, cy = pygame.Vector2(self.arena_center_pos)
+        east = (cx + 300, cy)
+        west = (cx - 300, cy)
+        south = (cx, cy + 300)
+
+        self._spawn_queue = [
+        ("range", east),
+        ("melee", south),
+        ("range", west),
+    ]
+
+        # clear any prior holders
+        self.pending_spawns = []         # will hold instances created THIS FRAME for main to pick up
+        self._spawn_refs_total = []      # will accumulate all spawned refs for later checking
+
+        self.summon_state = "spawning"
+        self.next_summon_time = pygame.time.get_ticks() + self.summon_spawn_delay
+        print("Boss: begin_summon_phase() - teleported + crouch started")
+
+    def _spawn_one_from_queue(self):
+        """Create a single enemy instance from the queue and append it to self.pending_spawns."""
+        if not self._spawn_queue:
+            return
+
+        typ, pos = self._spawn_queue.pop(0)  # FIFO
+
+    # local import (avoids circular import issues)
+        from enemys import MeleeEnemy, RangeEnemy
+
+        if typ == "range":
+            inst = RangeEnemy(tuple(pos), scale=1)
+        else:
+            inst = MeleeEnemy(tuple(pos), scale=1)
+
+        # Add to pending_spawns so main will pick it up this frame
+        self.pending_spawns.append(inst)
+
+        # Also add to our local total refs so we can detect when they're dead
+        self._spawn_refs_total.append(inst)
+        print(f"Boss: queued minion spawned -> {typ} at {pos}")
+
+
+    def _reset_hitbox(self):
+        w,h,ox,oy = self.hitbox_data[self.facing]
+        self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
