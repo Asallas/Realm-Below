@@ -11,6 +11,8 @@ class Character(pygame.sprite.Sprite):
         self.animation_timer = 0
         self.animation_delay = 2
 
+        self.suppress_auto_idle = False
+        self.freeze_animation = False
         self.sheets = {}
         self.animations = {}
         self.current_animation = "idle"
@@ -95,6 +97,9 @@ class Character(pygame.sprite.Sprite):
                     self.frame_index = frames - 1  # stay on last frame
             self.image = self.get_frame("death", self.facing, self.frame_index)
             return  
+        if getattr(self, "freeze_animation", False):
+            self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
+            return
         
         self.animation_timer += 1
 
@@ -133,12 +138,14 @@ class Character(pygame.sprite.Sprite):
                     if self.current_animation.startswith("att"):
                         self.attack_registered = False
                     
-                    self.locked = False
-                    self.set_animation("idle")
-                    
                     if getattr(self, "pending_hit", False):
                         self.pending_hit = False
                         self.set_animation("hit")
+                        self.locked = True
+                    if not(getattr(self, "suppress_auto_idle", False)):
+                        self.locked = False
+                        self.set_animation("idle")
+                    else:
                         self.locked = True
                 else:
                     self.frame_index = 0
@@ -323,6 +330,24 @@ class Character(pygame.sprite.Sprite):
             "west": 180, "northwest": 225, "north": 270, "northeast": 315
         }
         return facing_angles.get(self.facing, 0)
+    
+    def clamp_to_bounds(self, bounds_rect):
+        if self.rect.left < bounds_rect.left:
+            self.rect.left = bounds_rect.left
+            self.knockback_velocity.x = 0
+        
+        if self.rect.right > bounds_rect.right:
+            self.rect.right = bounds_rect.right
+            self.knockback_velocity.x = 0
+        
+        if self.rect.top < bounds_rect.top:
+            self.rect.top = bounds_rect.top
+            self.knockback_velocity.y = 0
+        if self.rect.bottom > bounds_rect.bottom:
+            self.rect.bottom = bounds_rect.bottom
+            self.knockback_velocity.y = 0
+        
+        self._update_hitboxes()
 
     # -------------- Debug draw ------------------------
     def draw(self, screen):

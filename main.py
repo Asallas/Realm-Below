@@ -3,6 +3,8 @@ import pygame, sys
 from player import Player
 from enemys import MeleeEnemy, RangeEnemy
 from boss import Boss
+from environment import load_map, build_bg_surface
+from intro import play_opening
 
 pygame.init()
 SCREEN_WIDTH = 1920
@@ -12,14 +14,53 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Realm Below")
 clock = pygame.time.Clock()
 
+# --------------- Environment -------------------
+tileset = pygame.image.load("Environment/RF_Catacombs_v1.0/mainlevbuild.png")
+TILE_SCALE = 2
+TILE_RECTS = {
+    "basic_floor": pygame.Rect(736, 208, 32, 48),
+    "Grate": pygame.Rect(487, 202, 81, 81),
+    "bottom_wall": pygame.Rect(64, 43, 192, 16),
+    "facing_wall": pygame.Rect(64, 415, 192, 78),
+    "facing_wall2": pygame.Rect(64, 335, 192, 78),
+    "left_wall": pygame.Rect(306, 41, 16, 48),
+    "right_wall": pygame.Rect(368, 41, 16, 48),
+    "door_frame": pygame.Rect(496, 32, 96, 78),
+    "door": pygame.Rect(640, 6, 80, 90)
+}
+LEFT_WALL = 16
+RIGHT_WALL = 16
+TOP_WALL = 78
+BOTTOM_WALL = 16
+playable_rect = pygame.Rect(LEFT_WALL, TOP_WALL, SCREEN_WIDTH - LEFT_WALL - RIGHT_WALL, SCREEN_HEIGHT - TOP_WALL - BOTTOM_WALL)
+
+loaded_tiles = load_map("environment_layout.json")
+background, tile_cache = build_bg_surface(loaded_tiles, tileset, TILE_RECTS, TILE_SCALE, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
 # ----------- Entities ------------------
 player = Player((0,0), 1)
-enemy1 = Boss((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), .5)
+
+def boss_factory():
+    b = Boss((0,0), .5)
+    b.last_special_start = pygame.time.get_ticks()
+    return b
+
+boss_from_intro, player, skipped = play_opening(
+    screen=screen, clock=clock, player=player, boss_factory=boss_factory, bg_surface=background,
+    pillar_spritesheet_path="Spritesheets/BossEnemy/Retro Impact Effect Pack 5 A.png",
+    pillar_y=1152, pillar_frames=8, pillar_frame_w=64, pillar_frame_h=64, 
+    pillar_scale=4, frame_delay=8, spawn_frame_index=4, spawn_extra_frames=6, skip_key=pygame.K_SPACE
+)
+if boss_from_intro:
+    boss = boss_from_intro
+    boss.rect.center = (SCREEN_WIDTH//2, SCREEN_HEIGHT//2)
+else:
+    boss = Boss((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), .5)
 enemy2 = MeleeEnemy((SCREEN_WIDTH // 2 + 200, SCREEN_HEIGHT // 2 - 200), .75)
 enemy3 = RangeEnemy((SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 300), 1)
 
-all_sprites = pygame.sprite.Group(player, enemy1, enemy2, enemy3)
-enemies = pygame.sprite.Group(enemy1, enemy2, enemy3)
+all_sprites = pygame.sprite.Group(player, boss, enemy2, enemy3)
+enemies = pygame.sprite.Group(enemy2, enemy3)
 
 
 TEMP_COLOR = (48,69,41)
@@ -44,10 +85,10 @@ def get_polygon_bounding_box(points):
 
     return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
 
-# enemies.remove(enemy1)
-# all_sprites.remove(enemy1)
-# enemies.remove(enemy3)
-# all_sprites.remove(enemy3)
+#enemies.remove(boss)
+#all_sprites.remove(boss)
+enemies.remove(enemy3)
+all_sprites.remove(enemy3)
 # ------------- Main Loop ----------------
 running = True
 game_over = False
@@ -113,8 +154,18 @@ while running:
             player.roll()
         else:
             player.stand()
+    
+    if boss.attack_seq_state is None:
+        boss.target = player.rect
+    else:
+        boss.target = None
+    
     for enemy in enemies:
         enemy.target = player.rect  
+
+    if (boss.attack_seq_state is None and pygame.time.get_ticks() - boss.last_special_start >= 30000):
+        boss.start_attack_sequence()
+        boss.last_special_start = pygame.time.get_ticks()
 
     # ----------- Updates -------------
     all_sprites.update()
@@ -131,6 +182,13 @@ while running:
 
     # -------------- Player Attack collision ---------------------
     if player.attack_active and player.attack_hitbox:
+        if boss and not boss.is_dead and not boss.is_dying:
+            poly_bbox = get_polygon_bounding_box(player.attack_hitbox)
+            if not player.attack_registered:
+                if poly_bbox.colliderect(boss.hitbox):
+                    if polygon_rect_collision(player.attack_hitbox, boss.hitbox):
+                        boss.take_damage(20, player.facing)
+                        print("Boss was hit")
         for enemy in enemies:
             if enemy.is_dead or enemy.is_dying:
                 continue
@@ -170,7 +228,23 @@ while running:
                         projectile.rect.bottom < 0 or projectile.rect.top > SCREEN_HEIGHT):
                         enemy.projectiles.remove(projectile)
     
+    if boss and not boss.is_dead and not boss.is_dying:
+        if player.hitbox:
+            if hasattr(boss, "explosions"):
+                for exp in list(boss.explosions):
+                    if exp.hitbox.colliderect(player.hitbox):
+                        player.take_damage(40, player.facing)
+            if getattr(boss, "attack_active", False) and getattr(boss, "attack_hitbox", None):
+                poly_bbox = get_polygon_bounding_box(boss.attack_hitbox)
+                if polygon_rect_collision(boss.attack_hitbox, player.hitbox):
+                    player.take_damage(10, boss.facing)
+                    boss.attack_registered = True
+                    print("Boss hit player")
+            
+            # handle for boss explosions later
     
+    for sprite in all_sprites:
+        sprite.clamp_to_bounds(playable_rect)
     for enemy in list(enemies):
         if enemy.is_dead:
             enemies.remove(enemy)
@@ -182,24 +256,26 @@ while running:
         continue
 
 
-    if len(enemies) == 0:
+    if len(enemies) == 0 and boss.is_dead:
         you_win = True
         continue
 
+
     screen.fill(TEMP_COLOR)
-
+    screen.blit(background, (0,0))
     for sprite in all_sprites:
-        screen.blit(sprite.image, sprite.rect)
-        sprite.draw_healthbar(screen)
+        if(isinstance(sprite, Boss)):
+            sprite.draw(screen)
+        else:
+            screen.blit(sprite.image, sprite.rect)
+        #sprite.draw_healthbar(screen)
 
-    # if enemy.attack_active and enemy.attack_hitbox:
-    #     enemy.draw_translucent_polygon(screen, enemy.attack_hitbox, (255, 0, 0, 100))
+    
 
     for enemy in enemies:
         if hasattr(enemy, "projectiles"):
             enemy.projectiles.draw(screen)
-
-    
+        
     pygame.display.flip()
     clock.tick(60)
 
