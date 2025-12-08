@@ -12,7 +12,7 @@ clock = pygame.time.Clock()
 running = True
 
 # --- Spawn Entity ---
-entity = MeleeEnemy((WIDTH // 2 - 500, HEIGHT // 2 - 500), 0.25)
+entity = Boss((WIDTH // 2 - 500, HEIGHT // 2 - 500), 0.25)
 
 # --- Facing Direction Setup ---
 facing_order = [
