@@ -5,6 +5,7 @@ from enemys import MeleeEnemy, RangeEnemy
 from boss import Boss
 from environment import load_map, build_bg_surface
 from intro import play_opening
+from misc_sprites import *
 
 pygame.init()
 SCREEN_WIDTH = 1920
@@ -70,15 +71,47 @@ TEMP_COLOR = (48,69,41)
 
 # ------------- Collision Detection Helper Functions ---------------
 def polygon_rect_collision(polygon_points, rect):
-    poly_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    pygame.draw.polygon(poly_surface, (255,255,255), polygon_points)
-    poly_mask = pygame.mask.from_surface(poly_surface)
+    """
+    More efficient polygon vs rect collision:
+     - compute bounding box of polygon and of rect,
+     - compute their intersection region,
+     - create a small surface & masks only for that intersection, then test overlap.
+    Returns True if they overlap.
+    """
+    if not polygon_points:
+        return False
 
-    rect_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    pygame.draw.rect(rect_surface, (255,255,255), rect)
-    rect_mask = pygame.mask.from_surface(rect_surface)
+    # polygon bounding box
+    pxs = [p[0] for p in polygon_points]
+    pys = [p[1] for p in polygon_points]
+    poly_bb = pygame.Rect(min(pxs), min(pys), max(pxs)-min(pxs), max(pys)-min(pys))
+
+    # fast reject if bounding boxes don't overlap
+    if not poly_bb.colliderect(rect):
+        return False
+
+    # intersection rect between polygon bb and target rect
+    inter = poly_bb.clip(rect)
+    if inter.width == 0 or inter.height == 0:
+        return False
+
+    # shift polygon points into the intersection-space (so mask origin is small)
+    shifted_poly = [(int(x - inter.x), int(y - inter.y)) for (x, y) in polygon_points]
+
+    # build tiny surfaces only for the intersection
+    poly_surf = pygame.Surface((inter.width, inter.height), pygame.SRCALPHA)
+    pygame.draw.polygon(poly_surf, (255,255,255), shifted_poly)
+
+    rect_surf = pygame.Surface((inter.width, inter.height), pygame.SRCALPHA)
+    # draw rectangle in rect_surf at the rect's position relative to inter
+    rect_local = pygame.Rect(rect.x - inter.x, rect.y - inter.y, rect.width, rect.height)
+    pygame.draw.rect(rect_surf, (255,255,255), rect_local)
+
+    poly_mask = pygame.mask.from_surface(poly_surf)
+    rect_mask = pygame.mask.from_surface(rect_surf)
 
     return poly_mask.overlap(rect_mask, (0,0)) is not None
+
 
 def get_polygon_bounding_box(points):
     xs = [p[0] for p in points]
@@ -181,18 +214,23 @@ while running:
 
     # -------------- Player Attack collision ---------------------
     if player.attack_active and player.attack_hitbox:
-        if boss and not boss.is_dead and not boss.is_dying and boss.hitbox:
-            poly_bbox = get_polygon_bounding_box(player.attack_hitbox)
-            if not player.attack_registered:
-                if poly_bbox.colliderect(boss.hitbox):
-                    if polygon_rect_collision(player.attack_hitbox, boss.hitbox):
-                        boss.take_damage(20, player.facing)
-                        print("Boss was hit")
+        poly_bbox = get_polygon_bounding_box(player.attack_hitbox)
+        if boss and not boss.is_dead and not boss.is_dying and getattr(boss, "hitbox", None):
+            if not getattr(boss, "invulnerable", False):
+                if not player.attack_registered:
+                    if poly_bbox.colliderect(boss.hitbox):
+                        if polygon_rect_collision(player.attack_hitbox, boss.hitbox):
+                            boss.take_damage(20, player.facing)
+                            player.attack_registered = True
+                            print("Boss was hit")
         for enemy in enemies:
             if enemy.is_dead or enemy.is_dying:
                 continue
+            if not getattr(enemy, "hitbox", None):
+                continue
+            if getattr(enemy, "invulnerable", False):
+                continue
 
-            poly_bbox = get_polygon_bounding_box(player.attack_hitbox)
             if not player.attack_registered:    
                 if poly_bbox.colliderect(enemy.hitbox):
                     if polygon_rect_collision(player.attack_hitbox, enemy.hitbox):
@@ -227,8 +265,17 @@ while running:
                         projectile.rect.bottom < 0 or projectile.rect.top > SCREEN_HEIGHT):
                         enemy.projectiles.remove(projectile)
     
+    if boss and getattr(boss, "ward_failed", False):
+        if not player.is_dead and not player.is_dying:
+            player.take_damage(player.max_health, boss.facing)
+
     if boss and not boss.is_dead and not boss.is_dying:
         if player.hitbox:
+            if getattr(boss, "wards", None):
+                for ward in list(boss.wards):
+                    if hasattr(ward, "hitbox"):
+                        if ward.hitbox.colliderect(player.hitbox):
+                            ward.resume()
             if hasattr(boss, "explosions"):
                 for exp in list(boss.explosions):
                     if exp.hitbox.colliderect(player.hitbox):
@@ -270,8 +317,8 @@ while running:
             boss.summon_state = None
             boss.invulnerable = False
             boss.locked = False
+            boss.enable_hitbox(manual=True)
             boss._spawn_refs_total = []
-            boss._reset_hitbox()
             print("Main: boss minions defeated; boss resumes")    
     for sprite in all_sprites:
         sprite.clamp_to_bounds(playable_rect)
@@ -285,11 +332,9 @@ while running:
         game_over = True
         continue
 
-
     if len(enemies) == 0 and boss.is_dead:
         you_win = True
         continue
-
 
     screen.fill(TEMP_COLOR)
     screen.blit(background, (0,0))
@@ -298,9 +343,7 @@ while running:
             sprite.draw(screen)
         else:
             screen.blit(sprite.image, sprite.rect)
-        #sprite.draw_healthbar(screen)
-
-    
+        #sprite.draw_hitbox(screen)
 
     for enemy in enemies:
         if hasattr(enemy, "projectiles"):

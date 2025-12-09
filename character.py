@@ -38,6 +38,10 @@ class Character(pygame.sprite.Sprite):
 
         self.hitbox_data = {}
         self.hitbox = None
+        self.hitbox_enabled = True
+        self._hitbox_manually_disabled = False
+        self._hitbox_debug = False
+
         self.attack_hitbox = None
         self.attack_hitbox_points = []
 
@@ -187,6 +191,7 @@ class Character(pygame.sprite.Sprite):
 
         # Start invulnerability window
         self.invulnerable = True
+        self.hitbox_enabled = False
         self.invuln_timer = 0
 
         # Set hitstun state to stop enemy from moving
@@ -228,6 +233,8 @@ class Character(pygame.sprite.Sprite):
             if self.invuln_timer >= self.invuln_duration:
                 self.invulnerable = False
                 self.invuln_timer = 0
+                if not getattr(self, "_hitbox_manually_disabled", False):
+                    self.hitbox_enabled = True
     
     def update_hit_stun(self):
         if getattr(self, "hit_stun_timer", None) is not None and self.locked:
@@ -265,17 +272,50 @@ class Character(pygame.sprite.Sprite):
         self.attack_hitbox = [(cx + x, cy + y) for x,y in rotated_points]
 
     def _update_hitboxes(self):
+        # Validate facing
         if self.facing not in self.hitbox_data:
-            print(f"[WARN] Invalid facing '{self.facing}' in _update_hitboxes(), defaulting to 'south'")
+            # don't spam logs; default silently
             self.facing = "south"
 
-        if self.hitbox:
-            w,h,ox,oy = self.hitbox_data[self.facing]
-            self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
-        if self.attack_hitbox and self.attack_active:
+        # If manual override is set, ensure hitbox stays None and return
+        if getattr(self, "_hitbox_manually_disabled", False):
+            # defensive: if someone else set a rect, clear it and optionally log
+            if self.hitbox is not None and self._hitbox_debug:
+                import traceback
+                print(f"[DEBUG] Hitbox cleared by manual override for {self}. Stack trace of who set it previously:")
+                traceback.print_stack()
+            self.hitbox = None
+            # still update attack_hitbox if needed
+            if getattr(self, "attack_hitbox", None) and self.attack_active:
+                cx, cy = self.rect.center
+                rotated_points = self._rotate_points(self.attack_hitbox_points, self._get_facing_angle())
+                self.attack_hitbox = [(cx + x, cy + y) for x,y in rotated_points]
+            return
+
+        # If hitboxes globally disabled (hitbox_enabled False) keep it None
+        if not getattr(self, "hitbox_enabled", True):
+            self.hitbox = None
+        else:
+            # create/update hitbox only when allowed
+            if self.hitbox_data:
+                w,h,ox,oy = self.hitbox_data[self.facing]
+                # Use ints for Pygame rect
+                self.hitbox = pygame.Rect(int(self.rect.x + ox), int(self.rect.y + oy), int(w), int(h))
+
+        # Update attack polygon hitbox as before
+        if getattr(self, "attack_hitbox", None) and self.attack_active:
             cx, cy = self.rect.center
             rotated_points = self._rotate_points(self.attack_hitbox_points, self._get_facing_angle())
             self.attack_hitbox = [(cx + x, cy + y) for x,y in rotated_points]
+
+    
+    def _reset_hitbox(self):
+        if not getattr(self, "hitbox_enabled", True):
+            self.hitbox = None
+            return
+
+        w,h,ox,oy = self.hitbox_data[self.facing]
+        self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
     
     def _get_direction_vector(self, direction):
         mapping = {
@@ -350,7 +390,7 @@ class Character(pygame.sprite.Sprite):
         self._update_hitboxes()
 
     # -------------- Debug draw ------------------------
-    def draw(self, screen):
+    def draw_hitbox(self, screen):
         if self.rect:
             pygame.draw.rect(screen, pygame.Color("white"), self.rect,2)
         if self.hitbox:
@@ -376,3 +416,19 @@ class Character(pygame.sprite.Sprite):
         overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
         pygame.draw.polygon(overlay, color, points)
         surface.blit(overlay, (0, 0))
+
+        # ---- Hitbox control API ----
+    def disable_hitbox(self, manual=True):
+        """Disable the hitbox. If `manual` True, this sets a manual override
+        that prevents any automatic recreation until enable_hitbox(manual=True) is called."""
+        self.hitbox = None
+        self.hitbox_enabled = False
+        if manual:
+            self._hitbox_manually_disabled = True
+
+    def enable_hitbox(self, manual=True):
+        """Enable the hitbox again. If manual True, this clears the manual override
+        and allows automatic recreation on the next _update_hitboxes()."""
+        self.hitbox_enabled = True
+        if manual:
+            self._hitbox_manually_disabled = False

@@ -1,67 +1,6 @@
 import pygame
 from character import Character
-
-class Explosion(pygame.sprite.Sprite):
-    def __init__(self, position, spritesheet, frame_rects, scale=2, anim_delay=3):
-        super().__init__()
-
-        self.frame_rects = frame_rects
-        self.spritesheet = spritesheet
-        self.scale = scale
-        self.anim_delay = anim_delay
-        
-        self.frames = []
-        for rect in frame_rects:
-            frame = spritesheet.subsurface(rect).copy()
-            if scale != 1:
-                frame = pygame.transform.scale(frame, (rect.w * scale, rect.h * scale))
-            self.frames.append(frame)
-
-        self.frame_index = 0
-        self.timer = 0
-
-        self.image = self.frames[0]
-        self.rect = self.image.get_rect(center=position)
-
-        # --------------------
-        # HITBOX DEFINITION
-        # Sprite final size is 64*scale.
-        # Hitbox = 32×32 area positioned 32px down.
-        # --------------------
-        hit_w = 64 * scale
-        hit_h = 32 * scale
-        offset_y = 32 * scale
-
-        # Center horizontally inside the 64×64 frame
-        hit_x = self.rect.x + (self.rect.width - hit_w) // 2
-        hit_y = self.rect.y + offset_y
-
-        self.hitbox = pygame.Rect(hit_x, hit_y, hit_w, hit_h)
-
-    def update(self):
-        self.timer += 1
-        if self.timer >= self.anim_delay:
-            self.timer = 0
-            self.frame_index += 1
-
-            if self.frame_index >= len(self.frames):
-                # Explosion finished → remove itself
-                self.kill()
-                return
-            
-            # Update frame image
-            old_center = self.rect.center
-            self.image = self.frames[self.frame_index]
-            self.rect = self.image.get_rect(center=old_center)
-
-            # --- Update hitbox position every frame ---
-            hit_w = 32 * self.scale
-            hit_h = 32 * self.scale
-            offset_y = 32 * self.scale
-            hit_x = self.rect.x + (self.rect.width - hit_w) // 2
-            hit_y = self.rect.y + offset_y
-            self.hitbox.update(hit_x, hit_y, hit_w, hit_h)
-
+from misc_sprites import Explosion, Ward
 
 class Boss(Character):
     def __init__(self, position, scale=2, SCREEN_WIDTH = 1920, SCREEN_HEIGHT = 1080):
@@ -92,7 +31,7 @@ class Boss(Character):
         self.attack_range = 100
         self.attack_cooldown = 3000
         self.last_attack_time = 0
-        self.speed = 1
+        self.speed = 3
 
         #------ Special Sequence flage --------
         self.arena_center_pos = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
@@ -129,6 +68,17 @@ class Boss(Character):
         self._spawn_queue = []
         self._spawn_refs_total = []
 
+        # ----------- Ward Flags ------------
+        self.wards = pygame.sprite.Group()
+        self.ward_spritesheet = pygame.image.load("Spritesheets/BossEnemy/ward-Effect.png")
+        self.ward_frame_w = 192
+        self.ward_frame_h = 192
+        self.ward_cols = 5
+        self.ward_rows = 3
+        self.ward_scale = 1.0
+        self.ward_anim_delay = 6
+        self._ward_phase_started = False
+
 
         # --------------------- Hitboxes ------------------
         self.scale_base = .5 # Scale at which the original hitbox values were set
@@ -163,6 +113,7 @@ class Boss(Character):
         self.current_animation = "idle"
         self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
         self.rect = self.image.get_rect(topleft = position)
+
     def update(self):
         if self.is_dead:
             return
@@ -170,14 +121,22 @@ class Boss(Character):
             self.update_animations()
             return
         
+        now = pygame.time.get_ticks()
+
         self.check_enter_summon_phase()
 
-        now = pygame.time.get_ticks()
+        self.check_enter_ward_phase()
+        if self.summon_state == "wards_active":
+            self.update_wards()
+            self.update_animations()
+            #self._update_hitboxes()
+            self.wards.update()
+            return
 
         if self.attack_seq_state is not None:
             self.run_attack_sequence()
             self.update_animations()
-            self._update_hitboxes()
+            #self._update_hitboxes()
             self.explosions.update()
             return
         
@@ -357,6 +316,8 @@ class Boss(Character):
             self.draw_warning_lines(screen, self.rect.center, self.dirs, length=900, a=self.warning_alpha, width=32)
         if len(self.explosions) > 0:
             self.explosions.draw(screen)
+        if len(self.wards) > 0:
+            self.wards.draw(screen)
 
     
     # ---------- Summon phase helpers ----------
@@ -382,8 +343,10 @@ class Boss(Character):
 
         # make boss invulnerable and locked while the phase runs
         self.invulnerable = True
-        self.hitbox = None
+        self._hitbox_debug = True
+        self.disable_hitbox(manual=True)
         self.locked = True
+        self.attack_hitbox = None
 
         # set facing and play crouch
         self.facing = "south"
@@ -433,6 +396,110 @@ class Boss(Character):
         print(f"Boss: queued minion spawned -> {typ} at {pos}")
 
 
-    def _reset_hitbox(self):
-        w,h,ox,oy = self.hitbox_data[self.facing]
-        self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
+    # ------------- Ward summoning ------------
+    def check_enter_ward_phase(self):
+        """Trigger the ward phase at <=25% HP, only when in idle/walk and not locked."""
+        if self._ward_phase_started:
+            return
+        if self.health <= (self.max_health * 0.25):
+            if self.current_animation in ("idle", "walk") and not self.locked:
+                self.begin_ward_phase()
+                self._ward_phase_started = True
+
+    def begin_ward_phase(self):
+        """Teleport to center, become invulnerable + crouch, spawn four wards at cardinal positions."""
+        # teleport instantly
+        self.rect.center = self.arena_center_pos
+
+        # boss locked & invulnerable during ward phase
+        self.invulnerable = True
+        self.disable_hitbox(manual=True)
+        self.locked = True
+        self.attack_hitbox = None
+
+        # facing south & play crouch
+        self.facing = "south"
+        self.set_animation("crouch")
+        self.frame_index = 0
+
+        # ward positions (cardinals) - distance from boss center
+        spacing = 300
+        cx, cy = pygame.Vector2(self.arena_center_pos)
+        positions = [
+            (cx, cy - spacing),  # north
+            (cx + spacing, cy),  # east
+            (cx, cy + spacing),  # south
+            (cx - spacing, cy),  # west
+        ]
+
+        # create and add ward instances to self.wards
+        self.wards.empty()
+        for pos in positions:
+            w = Ward(center_pos=pos,
+                     spritesheet=self.ward_spritesheet,
+                     frame_w=self.ward_frame_w, frame_h=self.ward_frame_h,
+                     cols=self.ward_cols, rows=self.ward_rows,
+                     anim_delay=self.ward_anim_delay,
+                     scale=self.ward_scale)
+            self.wards.add(w)
+
+        # record we are in ward phase
+        self.summon_state = "wards_active"
+
+        now = pygame.time.get_ticks()
+        self.ward_start_time = now
+        self.ward_duration_ms = 15_000
+        self.ward_tick_interval_ms = 2_000
+        self._next_ward_tick = now + self.ward_tick_interval_ms
+        self.ward_failed = False
+
+        print("Boss: began ward phase — spawned 4 wards; boss crouched/invulnerable")
+
+    def update_wards(self):
+        """Advance and manage ward group (called each update while ward phase active)."""
+        now = pygame.time.get_ticks()
+        # update ward animations
+        self.wards.update()
+
+        if now >= getattr(self, "_next_ward_tick", 0) and not self.ward_failed:
+            for step in range(self.cast_spawn_steps):
+                dist = (step + 1) * self.cast_spawn_spacing
+                for dvec in self.dirs:
+                    spawn_pos = pygame.Vector2(self.rect.center) + dvec * dist
+                    exp = Explosion(
+                        position=spawn_pos,
+                        spritesheet=self.explosion_spritesheet,
+                        frame_rects=self.explosion_frame_rects,
+                        scale=2,
+                        anim_delay=3
+                    )
+                    self.explosions.add(exp)
+            self._next_ward_tick = now + self.ward_tick_interval_ms
+
+        self.explosions.update()
+
+        if not self.ward_failed:
+            elapsed = now - getattr(self, "ward_start_time", now)
+            if elapsed >= getattr(self, "ward_duration_ms", 15000):
+                if len(self.wards) > 0:
+                    self.ward_failed = True
+
+                    for step in range(self.cast_spawn_steps):
+                        dist = (step + 1) * self.cast_spawn_spacing
+                        for dvec in self.dirs:
+                            spawn_pos = pygame.Vector2(self.rect.center) + dvec * dist
+                            exp = Explosion(
+                                position=spawn_pos,
+                                spritesheet=self.explosion_spritesheet,
+                                frame_rects=self.explosion_frame_rects,
+                                scale=4, anim_delay=3
+                            )
+                            self.explosions.add(exp)
+
+        # If no wards left, end phase
+        if len(self.wards) == 0 and not self.ward_failed:
+            self.summon_state = None
+            self.invulnerable = False
+            self.enable_hitbox(manual=True)
+            self.locked = False
+            print("Boss: ward phase finished - resume normal behavior")

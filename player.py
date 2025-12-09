@@ -280,12 +280,3 @@ class Player(Character):
                 self.hit_stun_timer = 0
                 if self.current_animation == "hit":
                     self.set_animation("idle")
- 
-    # ---------------- Helper Functions -------------------            
-        
-    def _reset_hitbox(self):
-        w,h,ox,oy = self.hitbox_data[self.facing]
-        self.hitbox = pygame.Rect(self.rect.x + ox, self.rect.y + oy, w, h)
-    
-    
-

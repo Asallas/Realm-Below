@@ -210,6 +210,8 @@ class RangeEnemy(Character):
             close = dist < self.preferred_distance - zone
             far = dist > self.preferred_distance + zone
             if not self.locked:
+                if to_target.length == 0:
+                    to_target = pygame.Vector2(0.00001, 0.00001)
                 if close:
                     move_vec = -to_target.normalize() * self.speed
                     self.set_animation("walk") 
