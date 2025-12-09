@@ -453,7 +453,7 @@ class Boss(Character):
         self._next_ward_tick = now + self.ward_tick_interval_ms
         self.ward_failed = False
 
-        print("Boss: began ward phase — spawned 4 wards; boss crouched/invulnerable")
+        print("Boss: began ward phase - spawned 4 wards; boss crouched/invulnerable")
 
     def update_wards(self):
         """Advance and manage ward group (called each update while ward phase active)."""

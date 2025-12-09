@@ -41,8 +41,8 @@ background, tile_cache = build_bg_surface(loaded_tiles, tileset, TILE_RECTS, TIL
 # ----------------- Entities ------------------
 player = Player((0,0), 1)
 player.facing = "north"
-player.health = 200
-player.max_health = 200
+player.health = 300
+player.max_health = 300
 
 # -------------- Boss Spawning -------------
 def boss_factory():
@@ -132,6 +132,9 @@ game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGH
 
 win_text = font.render("YOU WIN!", True, (0, 255, 0))
 win_rect = win_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+
+boss.health = 500
+boss.max_health = 500
 
 while running:
 
@@ -248,14 +251,20 @@ while running:
                 if poly_bbox.colliderect(player.hitbox):
                     if polygon_rect_collision(enemy.attack_hitbox, player.hitbox):
                         # Deal damage to player
-                        player.take_damage(10, enemy.facing)
+                        if player.blocking or player.block_holding:
+                            player.take_damage(0, enemy.facing)
+                        else:
+                            player.take_damage(10, enemy.facing)
                         enemy.attack_registered = True
                         print(f"{enemy.__class__.__name__} hit the player!")
 
             if hasattr(enemy, "projectiles"):
                 for projectile in list(enemy.projectiles):
                     if projectile.rect.colliderect(player.hitbox):
-                        player.take_damage(10, enemy.facing)
+                        if player.blocking or player.block_holding:
+                            player.take_damage(0, enemy.facing)
+                        else:
+                            player.take_damage(10, enemy.facing)
                         enemy.projectiles.remove(projectile)
                         enemy.attack_registered = True
                         print(f"Projectile from {enemy.__class__.__name__} hit player!")
@@ -279,11 +288,17 @@ while running:
             if hasattr(boss, "explosions"):
                 for exp in list(boss.explosions):
                     if exp.hitbox.colliderect(player.hitbox):
-                        player.take_damage(40, player.facing)
+                        if player.blocking or player.block_holding:
+                            player.take_damage(0, boss.facing)
+                        else:
+                            player.take_damage(40, boss.facing)
             if getattr(boss, "attack_active", False) and getattr(boss, "attack_hitbox", None):
                 poly_bbox = get_polygon_bounding_box(boss.attack_hitbox)
                 if polygon_rect_collision(boss.attack_hitbox, player.hitbox):
-                    player.take_damage(10, boss.facing)
+                    if player.blocking or player.block_holding:
+                        player.take_damage(0, boss.facing)
+                    else:
+                        player.take_damage(20, boss.facing)
                     boss.attack_registered = True
                     print("Boss hit player")
 
@@ -343,7 +358,7 @@ while running:
             sprite.draw(screen)
         else:
             screen.blit(sprite.image, sprite.rect)
-        #sprite.draw_hitbox(screen)
+        sprite.draw_hitbox(screen)
 
     for enemy in enemies:
         if hasattr(enemy, "projectiles"):

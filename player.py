@@ -89,12 +89,7 @@ class Player(Character):
         self.rect = self.image.get_rect(topleft = position)
         
 # ------------------ Update & Animation --------------------------
-    def set_animation(self, animation_name):
-        if animation_name in self.non_interruptible:
-            self.animation_delay = 2
-        else:
-            self.animation_delay = 5
-        super().set_animation(animation_name)
+    
     def update(self):
         if self.roll_cooldown > 0:
             self.roll_cooldown -= 1
@@ -110,34 +105,6 @@ class Player(Character):
 
         self.update_attack()
 
-    
-    def update_animations(self):
-        self.animation_timer += 1
-        if self.animation_timer >= self.animation_delay:
-            self.frame_index += 1
-            self.animation_timer = 0
-
-            frames = len(self.animations[self.current_animation][self.facing])
-            if self.frame_index >= frames:
-                if self.current_animation in self.looping:
-                    self.frame_index = 0
-                else:
-                    if self.current_animation == "block_start":
-                        self.set_animation("block_holding")
-                        self.block_holding = True
-                        self.frame_index = 0
-                        self.locked = True
-                    elif self.current_animation in {"attack1", "attack2", "roll", "counter"}:
-                        self.frame_index = frames - 1
-                        if self.current_animation == "roll":
-                            self._end_roll()
-                        elif self.current_animation in self.non_interruptible:
-                            self.locked = False
-                            self.set_animation("idle")
-                    else: # default
-                        self.frame_index = 0
-    
-        self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
         
 # ------------------------------ Movement -------------------------
     def move(self, direction):
@@ -240,43 +207,4 @@ class Player(Character):
         self.set_animation('idle')
         self._reset_hitbox()
         
-    #-------- Stun & Damage ------------
-
-    def take_damage(self, amount, attacker_facing):
-        # ignore damage if dying/dead or invulnerable
-        if self.is_dead or self.is_dying or self.invulnerable:
-            return
-        
-        self.health -= amount
-        print(f"{self.__class__.__name__} took {amount} damage - HP: {self.health}")
-
-        # apply immediate knockback
-        knockback_strength = 15
-        dir_vec = self._get_direction_vector(attacker_facing)
-        self.knockback_velocity = -dir_vec * knockback_strength
-
-        # Start invulnerability window
-        self.invulnerable = True
-        self.invuln_timer = 0
-
-        # Set hitstun state to stop enemy from moving
-        self.stunned = True
-        self.hit_stun_timer = 0
-
-        if getattr(self, "current_animation", "") in getattr(self, "non_interruptible", set()):
-            self.pending_hit = True
-        else:
-            self.pending_hit = False
-            self.set_animation("hit")
-        if self.health <= 0:
-            self.health = 0
-            self.die()
-
-    def update_hit_stun(self):
-        if self.stunned:
-            self.hit_stun_timer += 1
-            if self.hit_stun_timer >= self.hit_stun_duration:
-                self.stunned = False
-                self.hit_stun_timer = 0
-                if self.current_animation == "hit":
-                    self.set_animation("idle")
+    
