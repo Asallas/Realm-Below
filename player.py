@@ -105,6 +105,77 @@ class Player(Character):
 
         self.update_attack()
 
+    def set_animation(self, animation_name):
+        if animation_name in self.non_interruptible:
+            self.animation_delay = 2
+        else:
+            self.animation_delay = 5
+        super().set_animation(animation_name)
+
+    def update_animations(self):
+        # Force dying animation if dying
+        if self.is_dying:
+            if self.current_animation != "death":
+                self.set_animation("death")
+
+            self.animation_timer += 1
+            if self.animation_timer >= self.animation_delay:
+                self.frame_index += 1
+                self.animation_timer = 0
+                frames = len(self.animations["death"][self.facing])
+                if self.frame_index >= frames:
+                    self.frame_index = frames - 1  # stay on last frame
+            self.image = self.get_frame("death", self.facing, self.frame_index)
+            return  
+        if getattr(self, "freeze_animation", False):
+            self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
+            return
+        
+        self.animation_timer += 1
+
+        if self.facing is None or self.current_animation is None:
+            print(f"[WARN] Invalid animation state: anim={self.current_animation}, facing={self.facing}")
+            return
+
+
+        if self.current_animation not in self.animations:
+            self.set_animation("idle")
+            print("Current animation broke")
+            return
+        if self.facing not in self.animations[self.current_animation]:
+            self.set_animation("idle")
+            print("facing broke")
+            return
+
+        if self.animation_timer >= self.animation_delay:
+            self.frame_index += 1
+            self.animation_timer = 0
+
+            frames = len(self.animations[self.current_animation][self.facing])
+            if self.frame_index >= frames:
+                if self.current_animation in self.looping:
+                    self.frame_index = 0
+                elif self.current_animation == "hit":
+                    self.frame_index = frames - 1
+                    self.locked = False
+                    self.set_animation("idle")
+                else:
+                    if self.current_animation == "block_start":
+                        self.set_animation("block_holding")
+                        self.block_holding = True
+                        self.frame_index = 0
+                        self.locked = True
+                    elif self.current_animation in {"attack1", "attack2", "roll", "counter"}:
+                        self.frame_index = frames - 1
+                        if self.current_animation == "roll":
+                            self._end_roll()
+                        elif self.current_animation in self.non_interruptible:
+                            self.locked = False
+                            self.set_animation("idle")
+                    else: # default
+                        self.frame_index = 0
+    
+        self.image = self.get_frame(self.current_animation, self.facing, self.frame_index)
         
 # ------------------------------ Movement -------------------------
     def move(self, direction):

@@ -152,3 +152,4 @@ def play_opening(
             running = False
 
     return spawned_boss, player, skipped
+

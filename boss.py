@@ -177,7 +177,7 @@ class Boss(Character):
         self.update_animations()
         if self.current_animation == 'attack1':
             if prev_frame < 6 <= self.frame_index and not self.attack_active:
-                self._activate_attack_hitbox(60)
+                self._activate_attack_hitbox(30)
 
 
         if self.summon_state == "spawning":
